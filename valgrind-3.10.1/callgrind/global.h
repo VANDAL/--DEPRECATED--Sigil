@@ -120,9 +120,8 @@ struct _CommandLineOptions {
   Bool drw_noinstr;
   Bool drw_calcmem;
   Bool drw_debugtrace;
-  Bool drw_datareuse;
   Bool drw_syscall;
-  Int drw_smlimit;
+  Bool drw_intercepts;
 
   /* Call graph generation */
   Bool pop_on_jump;       /* Handle a jump between functions as ret+call */

@@ -2,10 +2,10 @@
    This file is part of Callgrind, a Valgrind tool for call graph
    profiling programs.
 
-   Copyright (C) 2002-2013, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
+   Copyright (C) 2002-2012, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
 
    This tool is derived from and contains lot of code from Cachegrind
-   Copyright (C) 2002-2013 Nicholas Nethercote (njn@valgrind.org)
+   Copyright (C) 2002-2012 Nicholas Nethercote (njn@valgrind.org)
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -22,6 +22,35 @@
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
    02111-1307, USA.
 
+   The GNU General Public License is contained in the file COPYING.
+*/
+
+/*
+   This file is part of Sigil, a tool for call graph profiling programs.
+ 
+   Copyright (C) 2012, Siddharth Nilakantan, Drexel University
+  
+   This tool is derived from and contains code from Callgrind
+   Copyright (C) 2002-2011, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
+ 
+   This tool is also derived from and contains code from Cachegrind
+   Copyright (C) 2002-2011 Nicholas Nethercote (njn@valgrind.org)
+ 
+   This program is free software; you can redistribute it and/or
+   modify it under the terms of the GNU General Public License as
+   published by the Free Software Foundation; either version 2 of the
+   License, or (at your option) any later version.
+ 
+   This program is distributed in the hope that it will be useful, but
+   WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+   General Public License for more details.
+ 
+   You should have received a copy of the GNU General Public License
+   along with this program; if not, write to the Free Software
+   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
+   02111-1307, USA.
+ 
    The GNU General Public License is contained in the file COPYING.
 */
 
@@ -533,9 +562,7 @@ Bool CLG_(process_cmd_line_option)(const HChar* arg)
    else if VG_BOOL_CLO(arg, "--simulate-cache",  CLG_(clo).simulate_cache) {}
    /* for option compatibility with cachegrind */
    else if VG_BOOL_CLO(arg, "--branch-sim",      CLG_(clo).simulate_branch) {}
-
-   /// Sigil options */
-   else if VG_BOOL_CLO(arg, "--sigil-tool",      CLG_(clo).sigil_on) {}
+   /*COMMAND LINE OPTIONS ADDED FOR SIGIL - Sid*/
    else if VG_BOOL_CLO(arg, "--drw-func",      CLG_(clo).drw_thread_or_func) {}
    else if VG_INT_CLO(arg, "--drw-splitcomp",      CLG_(clo).drw_splitcomp) {}
    else if VG_BOOL_CLO(arg, "--drw-events",      CLG_(clo).drw_events) {}
@@ -543,13 +570,12 @@ Bool CLG_(process_cmd_line_option)(const HChar* arg)
    else if VG_BOOL_CLO(arg, "--drw-noinstr",      CLG_(clo).drw_noinstr) {}
    else if VG_BOOL_CLO(arg, "--drw-calcmem",      CLG_(clo).drw_calcmem) {}
    else if VG_BOOL_CLO(arg, "--drw-debugtrace",      CLG_(clo).drw_debugtrace) {}
-   else if VG_BOOL_CLO(arg, "--drw-datareuse",      CLG_(clo).drw_datareuse) {}
-   else if VG_BOOL_CLO(arg, "--drw-syscalltracing",      CLG_(clo).drw_syscall) {}
-   else if VG_INT_CLO(arg, "--drw-smlimit",      CLG_(clo).drw_smlimit) {}
+   else if VG_BOOL_CLO(arg, "--drw-syscall",      CLG_(clo).drw_syscall) {}
+   else if VG_BOOL_CLO(arg, "--drw-intercepts",      CLG_(clo).drw_intercepts) {}
+   /* Done with FUNCTION CALL - inserted by Sid */
 
    else {
        Bool isCachesimOption = (*CLG_(cachesim).parse_opt)(arg);
-
 
        /* cache simulator is used if a simulator option is given */
        if (isCachesimOption)
@@ -675,9 +701,7 @@ void CLG_(set_clo_defaults)(void)
   CLG_(clo).instrument_atstart = True;
   CLG_(clo).simulate_cache = False;
   CLG_(clo).simulate_branch = False;
-
-  /* Sigil */
-  CLG_(clo).sigil_on = False;
+  /*COMMAND LINE DEFAULTS FOR SIGIL - Sid*/
   CLG_(clo).drw_thread_or_func = False;
   CLG_(clo).drw_splitcomp = 500;
   CLG_(clo).drw_events = False;
@@ -685,9 +709,9 @@ void CLG_(set_clo_defaults)(void)
   CLG_(clo).drw_noinstr = False;
   CLG_(clo).drw_calcmem = False;
   CLG_(clo).drw_debugtrace = False;
-  CLG_(clo).drw_datareuse = False;
   CLG_(clo).drw_syscall = False;
-  CLG_(clo).drw_smlimit = 30000;
+  CLG_(clo).drw_intercepts = False;
+  /* Done with FUNCTION CALL - inserted by Sid */
 
   /* Call graph */
   CLG_(clo).pop_on_jump = False;

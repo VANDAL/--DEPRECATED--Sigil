@@ -41,27 +41,25 @@
 #define NUM_CACHE_ENTRIES 10000
 #define CACHE_ENTRY_SIZE 20
 #define CACHE_LOOKUP_PART_SIZE 10
+//#define ADDRCHUNK_ARRAY_SIZE 1000
 #define ADDRCHUNK_ARRAY_SIZE 10
 #define MAX_THREADS 512
 #define EVENTCHUNK_SIZE 10000
 #define MAX_EVENTLIST_CHUNKS_PER_THREAD 3
 #define MAX_EVENTLIST_CHUNKS 1400
-#define MAX_EVENTINFO_SIZE 6 //In Giga bytes. 
+#define MAX_EVENTINFO_SIZE 1 //In Giga bytes. 
+//#define MAX_EVENTINFO_SIZE 1 //In Giga bytes. 
 #define MAX_EVENTADDRCHUNK_SIZE 1 //In Giga bytes. 
-#define MAX_RECURSE_DEPTH 10000
 #define DOLLAR_ON 1
+//#define LWC_PM_SIZE 524288
+//#define LWC_PM_SIZE 4194304
+//#define LWC_SM_SIZE 65536
 #define LWC_PM_SIZE 1048576 //1MB
 #define LWC_SM_SIZE 262144 //256K
-#define MAX_PRIMARY_ADDRESS (Addr)((((Addr)LWC_SM_SIZE) * LWC_PM_SIZE)-1)
-
 #define FUNCINSTLIST_CHUNK_SIZE 5
 #define MAX_NUM_SYSCALLS      256   // Highest seen in vg_syscalls.c: 237
 #define INVALID_TEMPREG 999999999
 #define SYSCALL_ADDRCHUNK_SIZE 10000
-#define HISTOGRAM_NUM_BINS 10000
-#define HISTOGRAM_BIN_SIZE 1000
-#define HISTOGRAM_REUSECOUNT_BIN_SIZE 10
-#define MAX_MEMORY_USAGE 20000 //In Mb. This could be a command line option later
 /* Done with DEFINITIONS - inserted by Sid */
 
 /*------------------------------------------------------------*/
@@ -78,9 +76,6 @@ typedef struct _drwevent drwevent;
 typedef struct _funcinfo funcinfo;
 typedef struct _dependencelist dependencelist;
 typedef struct _dependencelist_elemt dependencelist_elemt;
-typedef struct _hist_list hist_list;
-typedef struct _hist_elemt hist_elemt;
-typedef struct _hist_list_elemt hist_list_elemt;
 
 struct _evt_addrchunknode {
   Addr rangefirst, rangelast;
@@ -96,6 +91,13 @@ struct _addrchunknode {
   ULong count; //Holds the count of the number of times this was accessed, either for a read or write
 };
 
+typedef struct _pth_node pth_node;
+struct _pth_node {
+  Addr addr;
+  ULong threadmap;
+  pth_node *prev, *next;
+};
+
 struct _addrchunk {
   Addr first, last; // Holds the first hash and last hash 
   addrchunknode* original; //Original points to the first addrchunknode whose  hash of address range is in between first and last hash
@@ -108,6 +110,18 @@ struct _dependencelist_elemt { //8bytes + consumerfuncinfostuff
   int fn_number;
   int funcinst_number;
   int tid;
+
+/* //Min, Max not used in per-call list, but in overall list, it holds the min and max of the count of bytes transferred into this function from that function/call */
+/*   int min_count_unique;  */
+/*   int max_count_unique; */
+/*   int tot_count_unique; */
+/* //In the overall list, it holds the average, of the amount of data transferred per call of the function that this function consumed from. In the per-call list it holds the count seen by this particular call */
+/*   float avg_count_unique; */
+/* //These remain uninitialized in the percall list, but in the overall list, they hold the average, min and max of the number of calls to a function that this one depends upon. */
+/*   int min_num_dep_calls;  */
+/*   int max_num_dep_calls; */
+/*   float avg_num_dep_calls; //Per call average of number of calls to a function */
+/*   int tot_num_dep_calls; */
 
   //Copied over from consumerfuncinfo
   funcinst *vert_parent_fn;
@@ -122,29 +136,7 @@ struct _dependencelist { //If a pointer is 8 bytes, then 16bytes * DEPENDENCE_LI
   dependencelist *next, *prev;
   dependencelist_elemt list_chunk[DEPENDENCE_LIST_CHUNK_SIZE]; //note that this is not a list of pointers to structures, it is a list of structures!
   int size; //Should be initialized to zero
-};
-
-struct _hist_elemt {
-  UInt rangefirst, rangelast;
-  UInt count;
-};
-
-struct _hist_list_elemt {
-  ULong rangefirst, rangelast;
-  UInt count;
-  hist_list_elemt *next, *prev;
-};
-
-/* struct _reusecount_elemt { */
-/*   ULong rangefirst, rangelast; */
-/*   UInt count; */
-/*   hist_list_elemt *next, *prev; */
-/* }; */
-
-struct _hist_list {
-  hist_list *next, *prev;
-  hist_elemt list[DEPENDENCE_LIST_CHUNK_SIZE];
-  UInt size;
+  
 };
 
 typedef struct _funccontext funccontext;
@@ -170,10 +162,20 @@ struct _funcinfo {
   funcinfo *next, *prev; //To quickly access the list of the functions present in the program
   int number_of_funcinsts;
 
+  //  funcinst *funcinst_list; //Not sure if this list is needed
+
   //Cache entire contexts to accelerate the common case lookup
   funccontext *context;
   int context_size;
 };
+
+//DON"T NEED THIS BECAUSE IT WAS DETERMINED THAT WE HAVE TO SEARCH THROUGH THE CALLTREE EVERYTIME TO DETERMINE IF THIS IS UNIQUE OR NOT ANYWAY
+/* typedef struct _funcinst_list_chunk funcinst_list_chunk; */
+/* struct _funcinst_list_chunk { */
+/*   funcinst_list_chunk *next, *prev; */
+/*   funcinst funcinst_list[FUNCINSTLIST_CHUNK_SIZE]; //note that this is not a list of pointers to structures, it is a list of structures! */
+/*   int size; //Should be initialized to zero */
+/* } */
 
 /* Array to store data for a function instance. This is separated from other structs
  * to support a dynamic number of functioninfos for a function info item.
@@ -184,29 +186,46 @@ struct _funcinfo {
  * used from this list. 
  * Alternatively, an array could be used, but needs to be sized statically
  */
-struct __attribute__ ((__packed__)) _funcinst {
+struct _funcinst {
   funcinfo* function_info;
   int fn_number;
   int tid;
 
+  //addrchunk* producedlist; //Pointer to a linked list of address chunks. Should point to the first element in the list
+  //consumerfuncinfo* consumedlist; //Pointer to a linked list of functions consumed from. Should point to the first element in that list
+  //consumerfuncinfo* consumerlist; //Pointer to a linked list of functions that consume from this function. Should point to the first element in that list. This corresponds to the horizontal linking of the consumerfuncinfo lists
+
   dependencelist *consumedlist; //Pointer to a linked list of functions consumed from. Should point to the first element in that list
   dependencelist_elemt *consumerlist; //Pointer to a linked list of functions that consume from this function. Should point to the first element in that list. This corresponds to the horizontal linking of the consumerfuncinfo lists
+  //Int fn_number; 
   funcinst *caller; //Points to the single caller in this context. (There will be a different context for each unique caller to this function and different such structures for this function under different contexts)
   funcinst **callees; //Pointer to the pointers for the different callees of this function. NUM_CALLEES will determine the number of callees.
   int num_callees;
-  UInt callee_prnt_idx; //Callee print index
   ULong ip_comm_unique;
   //ULong op_comm_unique; //Output communication can be inferred.
   ULong ip_comm;
   //ULong op_comm;
   ULong instrs, flops, iops;
-  ULong current_call_instr_num;
   int num_calls;
 
   //For assigning unique numbers for funcinsts and finding them quickly.
   int funcinst_number; //Each funcinst for a particular function will have a unique number.
-  ULong num_events;
 
+  //funcinst* funcinst_list_next; //Not sure if this list is needed.
+  //funcinst* funcinst_list_prev;
+
+/*   //Maintain a list of funcinsts, for this particular call, that this funcinsts reads from. When the call returns, then we need to compare this list against the global call history (func_hist) and add to the dependencelist */
+/*   //Limited to 1000 for now. Can be made into a hash table eventually, if a function really consumes from that many other functions in one call. */
+/*     dependencelist *data_dep_list_for_call; //Hopefully will not need more than one chunk in the list for a single call. count not used for this, but num_dep_calls is used. */
+/*     dependencelist *overall_dep_list; //We'll just keep a list, where each element in the list is a chunk of funcinsts. I don't really expect that more than one chunk will be exceeded */
+/*   int func_hist_prev_call_idx; */
+/*   int func_hist_curr_call_idx; */
+
+  ULong num_events;
+  //These are not used as a central list is used instead
+  //drwevent* latest_event;
+  //drweventlist* drw_eventlist_start;
+  //drweventlist* drw_eventlist_end;
   SysRes res;
   int fd;
   
@@ -215,10 +234,6 @@ struct __attribute__ ((__packed__)) _funcinst {
   ULong num_addrchunks;
   ULong num_addrchunknodes;
 
-  hist_list_elemt *input_histogram;
-  hist_list_elemt *local_histogram;
-  hist_list_elemt *input_reuse_counts;
-  hist_list_elemt *local_reuse_counts;
 };
 
 typedef struct _drwbbinfo drwbbinfo;
@@ -231,11 +246,10 @@ struct _drwbbinfo {
 };
 
 struct _drwevent {
-  int type; //type = 0 -> operations, 1 -> communication
+  int type; //type = 0 -> operations, 1 -> communication, 2 -> pthread_event
+  int optype; 
   funcinst* producer; //This is used for type 0 and type 1 events
   funcinst* consumer; //This is 0 for type 0 events and has the consumer to type 1 events
-  UInt producer_call_num, consumer_call_num;
-  //drwevent* producer_event; //This is 0 for type 0 events and has the consumer to type 1 events
   ULong bytes; //0 for type 0, count for type 1
   ULong bytes_unique; //0 for type 0, count for type 1
   ULong iops; //count for type 0, 0 for type 1
@@ -249,10 +263,15 @@ struct _drwevent {
 
   //Shared stuff
   ULong shared_bytes_written;
+  //ULong 
   ULong event_num;
 
   //Pointers just to keep necessary timing information when a producedlist chunk is updated/overwritten
-  evt_addrchunknode *list;
+  //  drwevent *next, *prev;
+  //evt_addrchunknode *producedlist;
+  //evt_addrchunknode *conslist;
+  evt_addrchunknode *rlist;
+  evt_addrchunknode *wlist;
   fn_node* debug_node1;
   fn_node* debug_node2;
   
@@ -268,40 +287,41 @@ struct _drweventlist {
 typedef struct _drwglobvars drwglobvars;
 struct _drwglobvars {
   funcinfo* funcarray[NUM_FUNCTIONS];
+  //funcinfo** CLG_(sortedfuncarray)[NUM_FUNCTIONS];
   funcinfo* funcinfo_first;
+  //funcinfo* CLG_(funcinfo_last);
   funcinst* funcinst_first;
   funcinst* previous_funcinst;
   drwbbinfo current_drwbbinfo;
   int tid;
+  Bool in_pthread_api_call;
+  //We need to move these to funcinsts so that we can experiment with capturing events in functions
+/*   ULong num_events; */
+/*   drwevent* latest_event; */
+/*   drweventlist* drw_eventlist_start; */
+/*   drweventlist* drw_eventlist_end; */
+/*   SysRes res; */
+/*   int fd; */
+  //Above lines commented out as we have moved this functionality to be within a funcinst
 };
 
 //We can encapsulate these in structures as well making it slightly more efficient
-typedef struct __attribute__ ((__packed__)) { // Secondary Map: covers 64KB
+typedef struct { // Secondary Map: covers 64KB
   funcinst *last_writer[LWC_SM_SIZE]; // 64K entries for the last writer of the location
   funcinst *last_reader[LWC_SM_SIZE]; // 64K entries for the last writer of the location
 } SM;
-//SM Size = (8bytes + 8bytes) * LWC_SM_SIZE. E.g. with LWC_SM_SIZE = 64K, SM Size = 1MB
-//with LWC_SM_SIZE = 256K, SM Size = 4MB
 
-typedef struct __attribute__ ((__packed__)) { // Secondary Map: covers 64KB
+typedef struct { // Secondary Map: covers 64KB
   funcinst *last_writer[LWC_SM_SIZE]; // 64K entries for the last writer of the location
-  funcinst *last_reader[LWC_SM_SIZE]; // 64K entries for the last reader of the location
-  UInt call_number[LWC_SM_SIZE]; //Call number of LAST READER
-  ULong reuse_length_start[LWC_SM_SIZE]; //This is the reuse length in instructions. Zeroed out when the call number's don't match, else
-  ULong reuse_length_end[LWC_SM_SIZE]; //This is the reuse length in instructions. Zeroed out when the call number's don't match, else
-  UInt reuse_count[LWC_SM_SIZE];
-} SM_datareuse;
-
-typedef struct __attribute__ ((__packed__)) { // Secondary Map: covers 64KB
-  funcinst *last_writer[LWC_SM_SIZE]; // 64K entries for the last writer of the location
-  drwevent *last_writer_event[LWC_SM_SIZE];
+  //drwevent *last_writer_event[LWC_SM_SIZE];
+  ULong last_writer_event[LWC_SM_SIZE];
   funcinst *last_reader[LWC_SM_SIZE];
   drwevent *last_reader_event[LWC_SM_SIZE];
-  int last_writer_event_dumpnum[LWC_SM_SIZE];
+  //int last_writer_event_dumpnum[LWC_SM_SIZE];
 } SM_event;
 
+//SM* PM[LWC_PM_SIZE]; // Primary Map: covers 32GB
 void* PM[LWC_PM_SIZE]; // Primary Map: covers 32GB
-UInt PM_list[LWC_PM_SIZE]; // Primary Map list just keeps track of the FIFO order in which SMs are created, so that we can free them if need be
 
 typedef struct {
       Char*  name;
@@ -310,6 +330,36 @@ typedef struct {
       UInt   min_mem_reads;   // min number of memory reads done
       UInt   max_mem_reads;   // max number of memory reads done
 } SyscallInfo;
+
+typedef enum {
+      Sz0=0, Sz1=1, Sz2=2, Sz4=4,
+} RxSize;
+typedef enum {
+      PZero=0, POne=1, PMany=2
+} PCount;
+typedef struct _ShW {
+       // word 1
+       UInt   kind:8;                  // node kind
+       UInt   extra:8;                 // extra info for some node kinds
+       UInt   argc:8;                  // Num of args for variable sized ones
+       RxSize size:3;                  // Sz0, Sz1, Sz2 or Sz4;  3 bits used
+                                       //   so that Sz4 can be 4 (a bit lazy)
+
+       PCount n_parents:2;             // number of dependents (PZero..PMany)
+       UInt   rewritten:1;             // has node been rewritten?
+       UInt   graphed:1;               // has node been graphed?
+
+       // word 2
+       UInt   val;                     // actual value represented by node
+
+#ifdef RX_SLICING
+       // word 3
+       Addr   instr_addr;              // address of original x86 instruction
+#endif
+       // words 3+
+       struct _ShW* argv[0];           // variable number of args;
+   }
+   ShW;
 
 /* Done with STRUCTURES - inserted by Sid */
 
@@ -338,6 +388,12 @@ extern Addr CLG_(last_mem_write_addr);
 extern UInt CLG_(last_mem_write_len);
 extern addrchunk* CLG_(syscall_addrchunks);
 extern Int CLG_(syscall_addrchunk_idx);
+extern ULong CLG_(pthread_thread_map)[MAX_THREADS];
+extern int CLG_(num_threads);
+
+//Pthread stuff
+extern Bool CLG_(mutex_lock);
+extern Bool CLG_(mutex_unlock);
 
 void CLG_(init_funcarray)(void);
 void CLG_(free_funcarray)(void);
@@ -345,20 +401,16 @@ void CLG_(print_to_file)(void);
 void CLG_(storeIDRWcontext) (InstrInfo* inode, int datasize, Addr ea, Bool WR, int opsflag);
 void CLG_(put_in_last_write_cache) (Int datasize, Addr ea, funcinst* writer, int tid);
 void CLG_(read_last_write_cache) (Int datasize, Addr ea, funcinfo *current_funcinfo_ptr, funcinst *current_funcinst_ptr, int tid);
-void CLG_(drwinit_thread)(int tid);
 
 //FUNCTION CALLS TO INSTRUMENT THIGNS DURING SYSTEM CALLS
 void CLG_(pre_mem_read_asciiz)(CorePart part, ThreadId tid, Char* s, Addr a);
-void CLG_(pre_mem_read)(CorePart part, ThreadId tid, Char* s, Addr a, SizeT len);
-void CLG_(pre_mem_write)(CorePart part, ThreadId tid, Char* s, Addr a, SizeT len);
-void CLG_(post_mem_write)(CorePart part, ThreadId tid, Addr a, SizeT len);
-void CLG_(new_mem_brk) ( Addr a, SizeT len, ThreadId tid);
-void CLG_(new_mem_mmap) ( Addr a, SizeT len, Bool rr, Bool ww, Bool xx, ULong di_handle );
-void CLG_(new_mem_startup) ( Addr start_a, SizeT len, Bool rr, Bool ww, Bool xx, ULong di_handle );
+void CLG_(pre_mem_read)(CorePart part, ThreadId tid, Char* s, Addr a, UInt len);
+void CLG_(pre_mem_write)(CorePart part, ThreadId tid, Char* s, Addr a, UInt len);
+void CLG_(post_mem_write)(CorePart part, ThreadId tid, Addr a, UInt len);
+void CLG_(new_mem_brk) ( Addr a, UInt len, ThreadId tid);
+void CLG_(new_mem_mmap) ( Addr a, UInt len, Bool rr, Bool ww, Bool xx, ULong di_handle );
+void CLG_(new_mem_startup) ( Addr start_a, UInt len, Bool rr, Bool ww, Bool xx, ULong di_handle );
 
 //End new stuff for changed format
 
 /* Done with FUNCTIONS AND GLOBAL VARIABLES - inserted by Sid */
-
-
-/*COPIED FROM HELGRIND.H so that Sigil could be standalone*/

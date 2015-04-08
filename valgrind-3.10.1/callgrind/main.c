@@ -248,8 +248,6 @@ void log_ind_branch(InstrInfo* ii, UWord actual_dst)
 
 /*! 
  *  \brief Sigil: Added to count flops and iops
- *
- *  \todo if (CLG_(clo.sigil_on)) in front of uses
  */
 static VG_REGPARM(2)
 void log_ops_event(InstrInfo* ii, IRType Op) 
@@ -1205,7 +1203,6 @@ IRSB* CLG_(instrument)( VgCallbackClosure* closure,
 	       addEvent_Dr( &clgs, curr_inode,
 			    sizeofIRType(data->Iex.Load.ty), aexpr );
 	    }
-            if (CLG_(clo).sigil_on){ /// Sigil
               switch (data->tag) {
               case Iex_Triop: {
                 //IRExpr* aexpr = data->Iex.Triop.addr;
@@ -1238,7 +1235,6 @@ IRSB* CLG_(instrument)( VgCallbackClosure* closure,
               default:
                 break;
               }
-            }
 	    break;
 	 }
 
@@ -1904,7 +1900,6 @@ void CLG_(pre_syscalltime)(ThreadId tid, UInt syscallno,
 {
 /// Sigil
 /* Accurately follow what happens during a syscall */
-  if (CLG_(clo).sigil_on){
     if(CLG_(clo).drw_syscall){
       int i, len; Addr a;
       CLG_(current_syscall) = syscallno;
@@ -1917,8 +1912,6 @@ void CLG_(pre_syscalltime)(ThreadId tid, UInt syscallno,
       }
       CLG_(syscall_addrchunk_idx) = 0;
     }
-  }
-
   if (CLG_(clo).collect_systime) {
 #if CLG_MICROSYSTIME
     struct vki_timeval tv_now;
@@ -1963,7 +1956,6 @@ void CLG_(post_syscalltime)(ThreadId tid, UInt syscallno,
 
 /// Sigil
 /* Accurately follow what happens during a syscall */
-  if (CLG_(clo).sigil_on){
     if(CLG_(clo).drw_syscall){
       //if(CLG_(current_syscall_tid) == CLG_(current_tid))
         //tl_assert(CLG_(current_syscall) == syscallno);
@@ -1974,7 +1966,6 @@ void CLG_(post_syscalltime)(ThreadId tid, UInt syscallno,
       CLG_(current_syscall) = -1;
       CLG_(current_syscall_tid) = -1;
     }
-  }
 
 }
 
@@ -2118,10 +2109,8 @@ void finish(void)
 
   /// Sigil
   /* Function calls added to callgrind to put all data accesses for every address in a linked list */
-  if (CLG_(clo).sigil_on){
     CLG_(print_to_file) ();
     CLG_(free_funcarray)();
-  }
 
   CLG_(dump_profile)(0, False);
 
@@ -2232,9 +2221,7 @@ void CLG_(post_clo_init)(void)
 
   /// Sigil
   /* Function calls added to callgrind to put all data accesses for every address in a linked list - Sid */
-   if (CLG_(clo).sigil_on){
      CLG_(init_funcarray)();
-   }
 
    (*CLG_(cachesim).post_clo_init)();
 
