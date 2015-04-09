@@ -35,36 +35,35 @@ fi
 echo "$lineheader Sigil build complete!"
 
 ################################
-# Modify post processing paths #
+# Modify run script paths #
 ################################
-echo "$lineheader Modifying Sigil postprocessing paths"
-postprocessing_path="$sigil_path/postprocessing/aggregate_costs_gran.py"
-oldvalgrind="valgrind-3.7"
+echo "$lineheader Modifying Sigil run script paths"
+runscript_path="$sigil_path/runsigil_and_gz.py"
 
-callgrind_annotate_old="callgrind/callgrind_annotate"
-callgrind_annotate_new="$sigil_path/$valgrind/$callgrind_annotate_old"
+runscript_blank="vg_in_place = \"\""
+runscript_vg="vg_in_place = \"$valgrind/vg-in-place\""
 
-sed -i "s|$callgrind_annotate_old|$callgrind_annotate_new|" $postprocessing_path
+sed -i "s|$runscript_blank|$runscript_vg|" $runscript_path
 
 echo "$lineheader Sigil setup complete"
 
 #########################
 #  Example using sigil  #
 #########################
-read -p "$lineheader Would you like to run the example tests? [Y/n]:" 
-if ! [[ "$REPLY" == "" || $(echo $REPLY | grep -i "^y$\|^yes$") ]]
-then
-	echo "$lineheader All done!"
-	exit 0
-fi
-
-echo "$lineheader Running example..."
-
-exe_file_path="$sigil_path/examples"
-g++ $exe_file_path/sigil_test.c -o $exe_file_path/sigil_test
-
-$sigil_path/$valgrind/vg-in-place --tool=callgrind --sigil-tool=yes --separate-callers=100 --cache-sim=yes --drw-func=yes $exe_file_path/sigil_test #--drw-events=yes,
-$sigil_path/$valgrind/vg-in-place --tool=callgrind --cache-sim=yes --branch-sim=yes --callgrind-out-file=callgrind_out $exe_file_path/sigil_test
-$sigil_path/postprocessing/aggregate_costs_gran.py sigil.totals.out-1 --trim-tree --cgfile=callgrind_out --gran-mode=metric > $exe_file_path/postprocessing_result_math
-
-echo "$lineheader Finished running example! Check $exe_file_path"
+#read -p "$lineheader Would you like to run the example tests? [Y/n]:" 
+#if ! [[ "$REPLY" == "" || $(echo $REPLY | grep -i "^y$\|^yes$") ]]
+#then
+#	echo "$lineheader All done!"
+#	exit 0
+#fi
+#
+#echo "$lineheader Running example..."
+#
+#exe_file_path="$sigil_path/examples"
+#g++ $exe_file_path/sigil_test.c -o $exe_file_path/sigil_test
+#
+#$sigil_path/$valgrind/vg-in-place --tool=callgrind --sigil-tool=yes --separate-callers=100 --cache-sim=yes --drw-func=yes $exe_file_path/sigil_test #--drw-events=yes,
+#$sigil_path/$valgrind/vg-in-place --tool=callgrind --cache-sim=yes --branch-sim=yes --callgrind-out-file=callgrind_out $exe_file_path/sigil_test
+#$sigil_path/postprocessing/aggregate_costs_gran.py sigil.totals.out-1 --trim-tree --cgfile=callgrind_out --gran-mode=metric > $exe_file_path/postprocessing_result_math
+#
+#echo "$lineheader Finished running example! Check $exe_file_path"
