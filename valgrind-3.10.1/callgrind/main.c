@@ -1873,6 +1873,95 @@ Bool CLG_(handle_client_request)(ThreadId tid, UWord *args, UWord *ret)
          *ret = 0;
       return handled;
    }
+/*Added by Sid for registering sigil callbacks in client requests*/
+   case VG_USERREQ__SIGIL_PTHREAD: {
+     drwglobvars *thread_globvar = CLG_(thread_globvars)[CLG_(current_tid)];
+     //CLG_(set_instrument_state)("Client Request", False);
+     switch(args[1]){
+     case 0:
+       if(!args[2]){
+	 //VG_(printf)("Pthread create entry in thread %d for thread %ld!\n",CLG_(current_tid),args[3]);
+	 //CLG_(storeIDRWcontext) (NULL, 0, args[3], 0, 8); //opsflag == 8 is pthread_create
+	 //CLG_(storeIDRWcontext) (NULL, 0, 0, 0, 8); //opsflag == 8 is pthread_create
+       }
+       else{
+	 thread_globvar->in_pthread_api_call = 0;
+	 CLG_(storeIDRWcontext) (NULL, 0, args[3], 0, 8); //opsflag == 8 is pthread_create
+	 //If there are pthread calls, deal with those
+         VG_(printf)("Pthread create exit in thread %d for thread %ld! Num threads in system: %d\n",CLG_(current_tid),args[3],CLG_(num_threads));
+       }
+       break;
+     case 1:
+       if(!args[2]){
+	 VG_(printf)("Pthread join entry in thread %d for thread %ld!\n",CLG_(current_tid),args[3]);
+	 CLG_(storeIDRWcontext) (NULL, 0, args[3], 0, 9); //opsflag == 6 is pthread_join
+       }
+       else{
+	 thread_globvar->in_pthread_api_call = 0;
+	 VG_(printf)("Pthread join exit in thread %d for thread %ld! Num threads in system: %d\n",CLG_(current_tid),args[3],CLG_(num_threads));
+       }
+       break;
+     case 2:
+       if(!args[2]){
+	 //VG_(printf)("Pthread lock entry! Mutex: %lu\n",(Addr) args[3]);
+	 CLG_(storeIDRWcontext) (NULL, 0, args[3], 0, 6); //opsflag == 6 is mutex_lock
+       }
+       else
+	 //VG_(printf)("Pthread lock exit! Mutex: %lu\n",(Addr) args[3]);
+	 thread_globvar->in_pthread_api_call = 0;
+       break;
+     case 3:
+       if(!args[2]){
+	 CLG_(storeIDRWcontext) (NULL, 0, args[3], 0, 7);
+	 //VG_(printf)("Pthread unlock entry! Mutex: %lu\n",(Addr) args[3]);
+       }
+       else
+	 thread_globvar->in_pthread_api_call = 0;
+	 //VG_(printf)("Pthread unlock exit! Mutex: %lu\n",(Addr) args[3]);
+       break;
+     case 4: //pthread_barrier_wait
+       if(!args[2]){
+	 CLG_(storeIDRWcontext) (NULL, 0, args[3], 0, 10);
+       }
+       else
+	 thread_globvar->in_pthread_api_call = 0;
+       break;
+     case 5: //pthread_cond_wait
+       if(!args[2]){
+	 CLG_(storeIDRWcontext) (NULL, 0, args[4], 0, 11);
+       }
+       else
+	 thread_globvar->in_pthread_api_call = 0;
+       break;
+     case 6: //pthread_cond_signal
+       if(!args[2]){
+	 CLG_(storeIDRWcontext) (NULL, 0, args[3], 0, 12);
+       }
+       else
+	 thread_globvar->in_pthread_api_call = 0;
+       break;
+     case 7: //pthread_spin_lock
+       if(!args[2]){
+	 CLG_(storeIDRWcontext) (NULL, 0, args[3], 0, 13);
+       }
+       else
+	 thread_globvar->in_pthread_api_call = 0;
+       break;
+     case 8: //pthread_spin_unlock
+       if(!args[2]){
+	 CLG_(storeIDRWcontext) (NULL, 0, args[3], 0, 14);
+       }
+       else
+	 thread_globvar->in_pthread_api_call = 0;
+       break;
+     default:
+       VG_(printf)("Incorrect type specified in wrapper");
+       tl_assert(0);
+     }
+     *ret = 0;                 /* meaningless */
+   }
+     break;
+/*Done addition by Sid*/
    default:
       return False;
    }
@@ -1956,7 +2045,8 @@ void CLG_(post_syscalltime)(ThreadId tid, UInt syscallno,
 
 /// Sigil
 /* Accurately follow what happens during a syscall */
-    if(CLG_(clo).drw_syscall){
+	if(CLG_(clo).drw_syscall){
+		if(CLG_(current_syscall_tid) == CLG_(current_tid))
       //if(CLG_(current_syscall_tid) == CLG_(current_tid))
         //tl_assert(CLG_(current_syscall) == syscallno);
       if(CLG_(current_syscall) != syscallno)

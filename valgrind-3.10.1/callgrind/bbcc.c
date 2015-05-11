@@ -624,16 +624,17 @@ void CLG_(setup_bbcc)(BB* bb)
   /// Sigil
   if (CLG_(clo).sigil_on){
     //Added to track the previous BB
-    thread_globvar = CLG_(thread_globvars)[tid];
-    if (!thread_globvar){
-      CLG_(drwinit_thread)(tid);
-      thread_globvar = CLG_(thread_globvars)[tid];
-    }
-    thread_globvar->current_drwbbinfo.previous_bb_jmpindex = CLG_(current_state).jmps_passed;
-    thread_globvar->current_drwbbinfo.current_bb = bb;
-    thread_globvar->current_drwbbinfo.previous_bb = last_bb;
-    thread_globvar->current_drwbbinfo.previous_bbcc = last_bbcc;
+	thread_globvar = CLG_(thread_globvars)[tid];
+  	if (!thread_globvar){
+    VG_(printf)("Creating thread %d\n",tid);
+    CLG_(drwinit_thread)(tid);
   }
+  thread_globvar->current_drwbbinfo.previous_bb_jmpindex = CLG_(current_state).jmps_passed;
+  thread_globvar->current_drwbbinfo.current_bb = bb;
+  thread_globvar->current_drwbbinfo.previous_bb = last_bb;
+  thread_globvar->current_drwbbinfo.previous_bbcc = last_bbcc;
+  }
+  //DONE ADDITION BY SID
 
   if (last_bb) {
       passed = CLG_(current_state).jmps_passed;

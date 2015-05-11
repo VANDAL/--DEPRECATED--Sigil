@@ -78,7 +78,10 @@ typedef
       VG_USERREQ__TOGGLE_COLLECT,
       VG_USERREQ__DUMP_STATS_AT,
       VG_USERREQ__START_INSTRUMENTATION,
-      VG_USERREQ__STOP_INSTRUMENTATION
+      VG_USERREQ__STOP_INSTRUMENTATION,
+/*Added by Sid for registering sigil callbacks in client requests*/
+      VG_USERREQ__SIGIL_PTHREAD
+/*Done addition by Sid*/
    } Vg_CallgrindClientRequest;
 
 /* Dump current state of cost centers, and zero them afterwards */
@@ -125,5 +128,10 @@ typedef
 #define CALLGRIND_STOP_INSTRUMENTATION                               \
   VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__STOP_INSTRUMENTATION,  \
                                   0, 0, 0, 0, 0)
+/*Added by Sid for registering sigil callbacks in client requests*/
+#define CALLGRIND_SIGIL_PTHREAD(type,enter_leave,mutex,cond)	  \
+  VALGRIND_DO_CLIENT_REQUEST_STMT(VG_USERREQ__SIGIL_PTHREAD,	  \
+                                  type, enter_leave, mutex, cond, 0)
+/*Done addition by Sid*/
 
 #endif /* __CALLGRIND_H */

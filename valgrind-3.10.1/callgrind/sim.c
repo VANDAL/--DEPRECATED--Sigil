@@ -1117,7 +1117,7 @@ static void log_1I0D(InstrInfo* ii)
 
     /// Sigil
     if (CLG_(clo).sigil_on){
-      CLG_(storeIDRWcontext)(ii, 1, /*addr*/0, /*WR*/0, 0);
+    CLG_(storeIDRWcontext)(ii, 1, CLG_(bb_base) + ii->instr_offset, /*WR*/0, 0);
     }
 }
 
@@ -1155,7 +1155,8 @@ static void log_2I0D(InstrInfo* ii1, InstrInfo* ii2)
 
     /// Sigil
     if (CLG_(clo).sigil_on){
-      CLG_(storeIDRWcontext)(ii1, 2, /*addr*/0, /*WR*/0, 0);
+    CLG_(storeIDRWcontext)(ii1, 1, CLG_(bb_base) + ii1->instr_offset, /*WR*/0, 0);
+    CLG_(storeIDRWcontext)(ii2, 1, CLG_(bb_base) + ii2->instr_offset, /*WR*/0, 0);
     }
 }
 
@@ -1198,7 +1199,9 @@ static void log_3I0D(InstrInfo* ii1, InstrInfo* ii2, InstrInfo* ii3)
 
     /// Sigil
     if (CLG_(clo).sigil_on){
-      CLG_(storeIDRWcontext)(ii1, 3, /*addr*/0, /*WR*/0, 0);
+    CLG_(storeIDRWcontext)(ii1, 1, CLG_(bb_base) + ii1->instr_offset, /*WR*/0, 0);
+    CLG_(storeIDRWcontext)(ii2, 1, CLG_(bb_base) + ii2->instr_offset, /*WR*/0, 0);
+    CLG_(storeIDRWcontext)(ii3, 1, CLG_(bb_base) + ii3->instr_offset, /*WR*/0, 0);
     }
 }
 
@@ -1237,8 +1240,8 @@ static void log_1I1Dr(InstrInfo* ii, Addr data_addr, Word data_size)
 
     /// Sigil
     if (CLG_(clo).sigil_on){
-      CLG_(storeIDRWcontext)(ii, 1, /*addr*/0, /*WR*/0, 0);
-      CLG_(storeIDRWcontext) (ii, data_size, data_addr, /*WR*/0, 1);
+    CLG_(storeIDRWcontext)(ii, 1, CLG_(bb_base) + ii->instr_offset, /*WR*/0, 0);
+    CLG_(storeIDRWcontext) (ii, data_size, data_addr, /*WR*/0, 1);
     }
 }
 
@@ -1271,7 +1274,7 @@ static void log_0I1Dr(InstrInfo* ii, Addr data_addr, Word data_size)
 
     /// Sigil
     if (CLG_(clo).sigil_on){
-      CLG_(storeIDRWcontext) (ii, data_size, data_addr, /*WR*/0, 1);
+    CLG_(storeIDRWcontext) (ii, data_size, data_addr, /*WR*/0, 1);
     }
 }
 
@@ -1311,8 +1314,8 @@ static void log_1I1Dw(InstrInfo* ii, Addr data_addr, Word data_size)
 
     /// Sigil
     if (CLG_(clo).sigil_on){
-      CLG_(storeIDRWcontext)(ii, 1, /*addr*/0, /*WR*/0, 0);
-      CLG_(storeIDRWcontext) (ii, data_size, data_addr, /*WR*/0, 2);
+    CLG_(storeIDRWcontext)(ii, 1, CLG_(bb_base) + ii->instr_offset, /*WR*/0, 0);
+    CLG_(storeIDRWcontext) (ii, data_size, data_addr, /*WR*/0, 2);
     }
 }
 
@@ -1342,7 +1345,7 @@ static void log_0I1Dw(InstrInfo* ii, Addr data_addr, Word data_size)
 
     /// Sigil
     if (CLG_(clo).sigil_on){
-      CLG_(storeIDRWcontext) (ii, data_size, data_addr, /*WR*/0, 2);
+    CLG_(storeIDRWcontext) (ii, data_size, data_addr, /*WR*/0, 2);
     }
 }
 
