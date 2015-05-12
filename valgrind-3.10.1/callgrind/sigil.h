@@ -398,18 +398,19 @@ extern Bool CLG_(mutex_unlock);
 void CLG_(init_funcarray)(void);
 void CLG_(free_funcarray)(void);
 void CLG_(print_to_file)(void);
+void CLG_(drwinit_thread)(int tid);
 void CLG_(storeIDRWcontext) (InstrInfo* inode, int datasize, Addr ea, Bool WR, int opsflag);
 void CLG_(put_in_last_write_cache) (Int datasize, Addr ea, funcinst* writer, int tid);
 void CLG_(read_last_write_cache) (Int datasize, Addr ea, funcinfo *current_funcinfo_ptr, funcinst *current_funcinst_ptr, int tid);
 
 //FUNCTION CALLS TO INSTRUMENT THIGNS DURING SYSTEM CALLS
-void CLG_(pre_mem_read_asciiz)(CorePart part, ThreadId tid, Char* s, Addr a);
-void CLG_(pre_mem_read)(CorePart part, ThreadId tid, Char* s, Addr a, UInt len);
-void CLG_(pre_mem_write)(CorePart part, ThreadId tid, Char* s, Addr a, UInt len);
-void CLG_(post_mem_write)(CorePart part, ThreadId tid, Addr a, UInt len);
-void CLG_(new_mem_brk) ( Addr a, UInt len, ThreadId tid);
-void CLG_(new_mem_mmap) ( Addr a, UInt len, Bool rr, Bool ww, Bool xx, ULong di_handle );
-void CLG_(new_mem_startup) ( Addr start_a, UInt len, Bool rr, Bool ww, Bool xx, ULong di_handle );
+void CLG_(pre_mem_read_asciiz)(CorePart part, ThreadId tid, const HChar* s, Addr a);
+void CLG_(pre_mem_read)(CorePart part, ThreadId tid, const HChar* s, Addr a, SizeT len);
+void CLG_(pre_mem_write)(CorePart part, ThreadId tid, const HChar* s, Addr a, SizeT len);
+void CLG_(post_mem_write)(CorePart part, ThreadId tid, Addr a, SizeT len);
+void CLG_(new_mem_brk) ( Addr a, SizeT len, ThreadId tid);
+void CLG_(new_mem_mmap) ( Addr a, SizeT len, Bool rr, Bool ww, Bool xx, ULong di_handle );
+void CLG_(new_mem_startup) ( Addr start_a, SizeT len, Bool rr, Bool ww, Bool xx, ULong di_handle );
 
 //End new stuff for changed format
 

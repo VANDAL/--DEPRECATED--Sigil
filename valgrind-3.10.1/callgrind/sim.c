@@ -1116,9 +1116,7 @@ static void log_1I0D(InstrInfo* ii)
     }
 
     /// Sigil
-    if (CLG_(clo).sigil_on){
     CLG_(storeIDRWcontext)(ii, 1, CLG_(bb_base) + ii->instr_offset, /*WR*/0, 0);
-    }
 }
 
 VG_REGPARM(2)
@@ -1153,11 +1151,8 @@ static void log_2I0D(InstrInfo* ii1, InstrInfo* ii2)
     inc_costs(Ir2Res, global_cost_Ir,
               CLG_(cost_base) + ii2->cost_offset + ii2->eventset->offset[EG_IR]);
 
-    /// Sigil
-    if (CLG_(clo).sigil_on){
     CLG_(storeIDRWcontext)(ii1, 1, CLG_(bb_base) + ii1->instr_offset, /*WR*/0, 0);
     CLG_(storeIDRWcontext)(ii2, 1, CLG_(bb_base) + ii2->instr_offset, /*WR*/0, 0);
-    }
 }
 
 VG_REGPARM(3)
@@ -1198,11 +1193,9 @@ static void log_3I0D(InstrInfo* ii1, InstrInfo* ii2, InstrInfo* ii3)
               CLG_(cost_base) + ii3->cost_offset + ii3->eventset->offset[EG_IR]);
 
     /// Sigil
-    if (CLG_(clo).sigil_on){
     CLG_(storeIDRWcontext)(ii1, 1, CLG_(bb_base) + ii1->instr_offset, /*WR*/0, 0);
     CLG_(storeIDRWcontext)(ii2, 1, CLG_(bb_base) + ii2->instr_offset, /*WR*/0, 0);
     CLG_(storeIDRWcontext)(ii3, 1, CLG_(bb_base) + ii3->instr_offset, /*WR*/0, 0);
-    }
 }
 
 /* Instruction doing a read access */
@@ -1239,10 +1232,8 @@ static void log_1I1Dr(InstrInfo* ii, Addr data_addr, Word data_size)
     }
 
     /// Sigil
-    if (CLG_(clo).sigil_on){
     CLG_(storeIDRWcontext)(ii, 1, CLG_(bb_base) + ii->instr_offset, /*WR*/0, 0);
     CLG_(storeIDRWcontext) (ii, data_size, data_addr, /*WR*/0, 1);
-    }
 }
 
 
@@ -1273,9 +1264,7 @@ static void log_0I1Dr(InstrInfo* ii, Addr data_addr, Word data_size)
     }
 
     /// Sigil
-    if (CLG_(clo).sigil_on){
     CLG_(storeIDRWcontext) (ii, data_size, data_addr, /*WR*/0, 1);
-    }
 }
 
 
@@ -1313,10 +1302,8 @@ static void log_1I1Dw(InstrInfo* ii, Addr data_addr, Word data_size)
     }
 
     /// Sigil
-    if (CLG_(clo).sigil_on){
     CLG_(storeIDRWcontext)(ii, 1, CLG_(bb_base) + ii->instr_offset, /*WR*/0, 0);
     CLG_(storeIDRWcontext) (ii, data_size, data_addr, /*WR*/0, 2);
-    }
 }
 
 /* See comment on log_0I1Dr. */
@@ -1344,9 +1331,7 @@ static void log_0I1Dw(InstrInfo* ii, Addr data_addr, Word data_size)
     }
 
     /// Sigil
-    if (CLG_(clo).sigil_on){
     CLG_(storeIDRWcontext) (ii, data_size, data_addr, /*WR*/0, 2);
-    }
 }
 
 
@@ -1784,11 +1769,12 @@ void CLG_(init_eventsets)()
     /*! Sigil - Added to count flops and iops*/
       //Ideally we need a command line option for this, but in my hack I can do without that
       CLG_(register_event_group2)(EG_OPS, "flops", "iops");
-      // event set used as base for instruction self cost
-      // CLG_(sets).base = CLG_(get_event_set2)(EG_USE, EG_IR); // Original - Sid
-      CLG_(sets).base = CLG_(get_event_set3)(EG_USE, EG_IR, EG_OPS);
 
     // event set used as base for instruction self cost
+    // CLG_(sets).base = CLG_(get_event_set2)(EG_USE, EG_IR); // Original - Sid
+    CLG_(sets).base = CLG_(get_event_set3)(EG_USE, EG_IR, EG_OPS);
+
+    /*Done addition by Sid*/
 
     // event set comprising all event groups, used for inclusive cost
     CLG_(sets).full = CLG_(add_event_group2)(CLG_(sets).base, EG_DR, EG_DW);
@@ -1830,10 +1816,8 @@ void CLG_(init_eventsets)()
     CLG_(append_event)(CLG_(dumpmap), "sysCount");
     CLG_(append_event)(CLG_(dumpmap), "sysTime");
     /*! Sigil - Added to count flops and iops */
-    if (CLG_(clo).sigil_on){
       CLG_(append_event)(CLG_(dumpmap), "flops");
       CLG_(append_event)(CLG_(dumpmap), "iops");
-    }
 }
 
 

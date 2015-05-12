@@ -127,15 +127,11 @@ void insert_to_consumedlist (funcinst *current_funcinst_ptr, funcinst *consumed_
 static __inline__
 void insert_to_drweventlist( int type, int optype , funcinst *producer, funcinst *consumer, ULong count, ULong count_unique );
 static int insert_to_evtaddrchunklist(evt_addrchunknode** chunkoriginal, Addr range_first, Addr range_last, ULong* refarg, int shared_read_tid, ULong shared_read_event_num);
-static int search_evtaddrchunklist(evt_addrchunknode** chunkoriginal, Addr range_first, Addr range_last, ULong* refarg, int* address_array);
-static void traverse_and_remove_in_dependencelist (dependencelist_elemt** chunkoriginal, Addr ea, Int datasize);
 static void handle_memory_overflow(void);
 static void my_fwrite(Int fd, Char* buf, Int len);
 static Char* filename = 0;
 static void CLG_(pth_node_insert)(pth_node** pth_node_first, pth_node** pth_node_last, Addr addr, int tid);
 static void CLG_(pth_node_outsert)(pth_node** pth_node_first, pth_node** pth_node_last, Addr *addr, ULong *threadmap);
-static void CLG_(push_pth_node_fifo)(pth_node** pth_node_first, pth_node** pth_node_last, Addr addr, ULong thread);
-static void CLG_(pop_pth_node_fifo)(pth_node** pth_node_first, pth_node** pth_node_last, Addr *addr, ULong *thread);
 
 static
 void file_err(void)
@@ -175,7 +171,8 @@ void CLG_(init_funcarray)()
   funcinsttemp->funcinst_number = 0;
   funcinsttemp->tid = STARTUP_FUNC;
   funcinsttemp->function_info = CLG_(syscall_globvars)->funcinfo_first; //Store pointer to central info store of function
-  funcinsttemp->num_callees = funcinsttemp->callees = funcinsttemp->funcinst_number = 0;
+  funcinsttemp->num_callees = funcinsttemp->funcinst_number = 0;
+  funcinsttemp->callees = 0;
   funcinsttemp->num_events = 0;
 
   //Initialize shadow memory here. Every Primary Map entry should point to the global empty secondary map 
@@ -225,8 +222,6 @@ void CLG_(drwinit_thread)(int tid)
   drwglobvars *thread_globvar;
   int j;
   char drw_filename[50], buf[8192]; SysRes res;
-  ULong dummy;
-  ULong threadnum = 0; Addr addr = 0;
   
   thread_globvar = (drwglobvars*) CLG_MALLOC("cl.drwinit_thread.gc.1",sizeof(drwglobvars));
   CLG_(thread_globvars)[tid] = thread_globvar;
@@ -282,15 +277,6 @@ void CLG_(drwinit_thread)(int tid)
 
 }
 
-static void record_search_depth(int search_depth){
-  if(search_depth > CLG_(max_search_depth))
-    CLG_(max_search_depth) = search_depth;
-  else if(search_depth < CLG_(min_search_depth))
-    CLG_(min_search_depth) = search_depth;
-  CLG_(tot_search_depth) += search_depth;
-  CLG_(num_searches)++;
-}
-
 static void free_recurse(funcinst *funcinstpointer){
 
   int i;
@@ -326,17 +312,17 @@ void CLG_(free_funcarray)() //You didn't malloc it, so no need to do this!
 
 static void print_debuginfo(void){
   //Print memory footprint information
-  VG_(printf)("Print for %lu: \n\n",CLG_(total_instrs));
-  VG_(printf)("Num SMs: %-10lu Num funcinsts: %-10lu Num Callee array elements(funcinst): %-10lu Num dependencelists(funcinst): %-10lu Num addrchunks(funcinst): %-10lu Num addrchunknodes(funcinst): %-10lu Num funcinfos: %-10lu Num funccontexts: %-10lu\n",CLG_(num_sms), CLG_(num_funcinsts), CLG_(num_callee_array_elements), CLG_(num_dependencelists), CLG_(num_addrchunks), CLG_(num_addrchunknodes), CLG_(num_funcinfos), CLG_(num_funccontexts));
+  VG_(printf)("Print for %llu: \n\n",CLG_(total_instrs));
+  VG_(printf)("Num SMs: %-10llu Num funcinsts: %-10llu Num Callee array elements(funcinst): %-10llu Num dependencelists(funcinst): %-10llu Num addrchunks(funcinst): %-10llu Num addrchunknodes(funcinst): %-10llu Num funcinfos: %-10llu Num funccontexts: %-10llu\n",CLG_(num_sms), CLG_(num_funcinsts), CLG_(num_callee_array_elements), CLG_(num_dependencelists), CLG_(num_addrchunks), CLG_(num_addrchunknodes), CLG_(num_funcinfos), CLG_(num_funccontexts));
   VG_(printf)("Size of PM: %-10lu = %lu(Mb) Size of SM: %-10lu = %lu(Kb) Size of SM_event: %-10lu  = %lu(Kb) Size of funcinst: %-10lu = %lu(Kb) Size of dependencelist: %-10lu = %lu(Kb) Size of addrchunk(funcinst): %-10lu Size of addrchunknode(funcinst): %-10lu Size of funcinfo: %-10lu = %lu(Kb)\n",sizeof(PM), sizeof(PM)/1024/1024, sizeof(SM), sizeof(SM)/1024, sizeof(SM_event), sizeof(SM_event)/1024, (sizeof(funcinst) + sizeof(funcinst*) * NUM_CALLEES), (sizeof(funcinst) + sizeof(funcinst*))/1024, sizeof(dependencelist), sizeof(dependencelist)/1024, sizeof(addrchunk), sizeof(addrchunknode), (sizeof(funcinfo) + sizeof(funccontext)*CLG_(clo).separate_callers), (sizeof(funcinfo) + sizeof(funccontext)*CLG_(clo).separate_callers)/1024);
   CLG_(tot_memory_usage) = sizeof(PM) + CLG_(num_funcinsts) * (sizeof(funcinst) + sizeof(funcinst*) * NUM_CALLEES) + CLG_(num_dependencelists) * sizeof(dependencelist) + CLG_(num_addrchunks) * sizeof(addrchunk) + CLG_(num_addrchunknodes)  * sizeof(addrchunknode) + CLG_(num_funcinfos) * (sizeof(funcinfo) + sizeof(funccontext)*CLG_(clo).separate_callers);
   if(CLG_(clo).drw_events)
     CLG_(tot_memory_usage) += CLG_(num_sms) * sizeof(SM_event);
   else
     CLG_(tot_memory_usage) += CLG_(num_sms) * sizeof(SM);
-  VG_(printf)("Memory for SM(bytes): %-10lu = %lu(Mb) Memory for SM_event(bytes): %-10lu = %lu(Mb) Memory for funcinsts(bytes): %-10lu = %lu(Mb)\n", CLG_(num_sms) * sizeof(SM), CLG_(num_sms) * sizeof(SM)/1024/1024, CLG_(num_sms) * sizeof(SM_event), CLG_(num_sms) * sizeof(SM_event)/1024/1024, CLG_(num_funcinsts) * (sizeof(funcinst) + sizeof(funcinst*) * NUM_CALLEES), CLG_(num_funcinsts) * (sizeof(funcinst) + sizeof(funcinst*) * NUM_CALLEES)/1024/1024);
-  VG_(printf)("  Memory for dependencelist(bytes): %-10lu = %lu(Mb) Memory for addrchunks(bytes): %-10lu = %lu(Mb) Memory for addrchunknodes(bytes): %-10lu = %lu(Mb) Memory for funcinfos(bytes): %-10lu = %lu(Mb)\n", CLG_(num_dependencelists) * sizeof(dependencelist), CLG_(num_dependencelists) * sizeof(dependencelist)/1024/1024, CLG_(num_addrchunks) * sizeof(addrchunk), CLG_(num_addrchunks) * sizeof(addrchunk)/1024/1024, CLG_(num_addrchunknodes)  * sizeof(addrchunknode), CLG_(num_addrchunknodes)  * sizeof(addrchunknode)/1024/1024, CLG_(num_funcinfos) * (sizeof(funcinfo) + sizeof(funccontext)*CLG_(clo).separate_callers), CLG_(num_funcinfos) * (sizeof(funcinfo) + sizeof(funccontext)*CLG_(clo).separate_callers)/1024/1024);
-  VG_(printf)("Total Memory size(bytes): %-10lu = %lu(Mb)\n\n", CLG_(tot_memory_usage), CLG_(tot_memory_usage)/1024/1024);
+  VG_(printf)("Memory for SM(bytes): %-10llu = %llu(Mb) Memory for SM_event(bytes): %-10llu = %llu(Mb) Memory for funcinsts(bytes): %-10llu = %llu(Mb)\n", CLG_(num_sms) * sizeof(SM), CLG_(num_sms) * sizeof(SM)/1024/1024, CLG_(num_sms) * sizeof(SM_event), CLG_(num_sms) * sizeof(SM_event)/1024/1024, CLG_(num_funcinsts) * (sizeof(funcinst) + sizeof(funcinst*) * NUM_CALLEES), CLG_(num_funcinsts) * (sizeof(funcinst) + sizeof(funcinst*) * NUM_CALLEES)/1024/1024);
+  VG_(printf)("  Memory for dependencelist(bytes): %-10llu = %llu(Mb) Memory for addrchunks(bytes): %-10llu = %llu(Mb) Memory for addrchunknodes(bytes): %-10llu = %llu(Mb) Memory for funcinfos(bytes): %-10llu = %llu(Mb)\n", CLG_(num_dependencelists) * sizeof(dependencelist), CLG_(num_dependencelists) * sizeof(dependencelist)/1024/1024, CLG_(num_addrchunks) * sizeof(addrchunk), CLG_(num_addrchunks) * sizeof(addrchunk)/1024/1024, CLG_(num_addrchunknodes)  * sizeof(addrchunknode), CLG_(num_addrchunknodes)  * sizeof(addrchunknode)/1024/1024, CLG_(num_funcinfos) * (sizeof(funcinfo) + sizeof(funccontext)*CLG_(clo).separate_callers), CLG_(num_funcinfos) * (sizeof(funcinfo) + sizeof(funccontext)*CLG_(clo).separate_callers)/1024/1024);
+  VG_(printf)("Total Memory size(bytes): %-10llu = %llu(Mb)\n\n", CLG_(tot_memory_usage), CLG_(tot_memory_usage)/1024/1024);
 }
 
 static void handle_memory_overflow(void){
@@ -649,7 +635,6 @@ static void put_writer_event(Addr ea, int datasize, funcinst *current_funcinst_p
   funcinst *current_previous_writer, *temp;
   ULong temp_rangefirst, temp_rangelast;
   //First traverse and remove the addresses in the current function's consumerlist
-  /* traverse_and_remove_in_dependencelist(&current_funcinst_ptr->consumerlist, ea, datasize); */
   //Then while overwriting, also determine the previous writer to a particular address and remove address chunks from its consumerlists
   //Do this efficiently in chunks
   sm = (SM_event*) get_SM_for_writing(ea);
@@ -669,8 +654,6 @@ static void put_writer_event(Addr ea, int datasize, funcinst *current_funcinst_p
     if(temp != current_previous_writer){
       //process whatever you have so far and reset temp_rangefirst and temp_rangelast
       //Make sure current_previous_writer is not zero and not local because we have already traversed and removed current_funcinst_ptr
-/*       if(current_previous_writer && current_previous_writer != current_funcinst_ptr) */
-/* 	traverse_and_remove_in_dependencelist(&current_previous_writer->consumerlist, temp_rangefirst, temp_rangelast - temp_rangefirst + 1); */
       current_previous_writer = temp;
       temp_rangefirst = ea + i;
       temp_rangelast = temp_rangefirst;
@@ -686,8 +669,6 @@ static void put_writer_event(Addr ea, int datasize, funcinst *current_funcinst_p
       sm->last_reader_event[(ea + i) & 0xffff] = 0;
     }
   }
-/*   if(current_previous_writer && current_previous_writer != current_funcinst_ptr) */
-/*     traverse_and_remove_in_dependencelist(&current_previous_writer->consumerlist, temp_rangefirst, temp_rangelast - temp_rangefirst + 1); */
 }
 
 static void put_writer_event_singlesm(Addr ea, void *sm_temp, int datasize, funcinst *current_funcinst_ptr, int tid){
@@ -696,7 +677,6 @@ static void put_writer_event_singlesm(Addr ea, void *sm_temp, int datasize, func
   funcinst *current_previous_writer, *temp;
   ULong temp_rangefirst, temp_rangelast;
   //First traverse and remove the addresses in the current function's consumerlist
-/*   traverse_and_remove_in_dependencelist(&current_funcinst_ptr->consumerlist, ea, datasize); */
   //Then while overwriting, also determine the previous writer to a particular address and remove address chunks from its consumerlists
   //Do this efficiently in chunks
   current_previous_writer = sm->last_writer[ea & 0xffff];
@@ -714,8 +694,6 @@ static void put_writer_event_singlesm(Addr ea, void *sm_temp, int datasize, func
     if(temp != current_previous_writer){
       //process whatever you have so far and reset temp_rangefirst and temp_rangelast
       //Make sure current_previous_writer is not zero and not local because we have already traversed and removed current_funcinst_ptr
-/*       if(current_previous_writer && current_previous_writer != current_funcinst_ptr) */
-/* 	traverse_and_remove_in_dependencelist(&current_previous_writer->consumerlist, temp_rangefirst, temp_rangelast - temp_rangefirst + 1); */
       current_previous_writer = temp;
       temp_rangefirst = ea + i;
       temp_rangelast = temp_rangefirst;
@@ -731,8 +709,6 @@ static void put_writer_event_singlesm(Addr ea, void *sm_temp, int datasize, func
       sm->last_reader_event[(ea + i) & 0xffff] = 0;
     }
   }
-/*   if(current_previous_writer && current_previous_writer != current_funcinst_ptr) */
-/*     traverse_and_remove_in_dependencelist(&current_previous_writer->consumerlist, temp_rangefirst, temp_rangelast - temp_rangefirst + 1); */
 }
 
 static void put_writer(Addr ea, int datasize, funcinst *current_funcinst_ptr, int tid){
@@ -741,7 +717,6 @@ static void put_writer(Addr ea, int datasize, funcinst *current_funcinst_ptr, in
   funcinst *current_previous_writer, *temp;
   ULong temp_rangefirst, temp_rangelast;
   //First traverse and remove the addresses in the current function's consumerlist
-/*   traverse_and_remove_in_dependencelist(&current_funcinst_ptr->consumerlist, ea, datasize); */
   //Then while overwriting, also determine the previous writer to a particular address and remove address chunks from its consumerlists
   //Do this efficiently in chunks
   sm = (SM*) get_SM_for_writing(ea);
@@ -758,8 +733,6 @@ static void put_writer(Addr ea, int datasize, funcinst *current_funcinst_ptr, in
     if(temp != current_previous_writer){
       //process whatever you have so far and reset temp_rangefirst and temp_rangelast
       //Make sure current_previous_writer is not zero and not local because we have already traversed and removed current_funcinst_ptr
-/*       if(current_previous_writer && current_previous_writer != current_funcinst_ptr) */
-/* 	traverse_and_remove_in_dependencelist(&current_previous_writer->consumerlist, temp_rangefirst, temp_rangelast - temp_rangefirst + 1); */
       current_previous_writer = temp;
       temp_rangefirst = ea + i;
       temp_rangelast = temp_rangefirst;
@@ -772,8 +745,6 @@ static void put_writer(Addr ea, int datasize, funcinst *current_funcinst_ptr, in
       sm->last_reader[(ea + i) & 0xffff] = 0;
     }
   }
-/*   if(current_previous_writer && current_previous_writer != current_funcinst_ptr) */
-/*     traverse_and_remove_in_dependencelist(&current_previous_writer->consumerlist, temp_rangefirst, temp_rangelast - temp_rangefirst + 1); */
 }
 
 static void put_writer_singlesm(Addr ea, void *sm_temp, int datasize, funcinst *current_funcinst_ptr, int tid){
@@ -782,7 +753,6 @@ static void put_writer_singlesm(Addr ea, void *sm_temp, int datasize, funcinst *
   funcinst *current_previous_writer, *temp;
   ULong temp_rangefirst, temp_rangelast;
   //First traverse and remove the addresses in the current function's consumerlist
-/*   traverse_and_remove_in_dependencelist(&current_funcinst_ptr->consumerlist, ea, datasize); */
   //Then while overwriting, also determine the previous writer to a particular address and remove address chunks from its consumerlists
   //Do this efficiently in chunks
   current_previous_writer = sm->last_writer[ea & 0xffff];
@@ -797,8 +767,6 @@ static void put_writer_singlesm(Addr ea, void *sm_temp, int datasize, funcinst *
     if(temp != current_previous_writer){
       //process whatever you have so far and reset temp_rangefirst and temp_rangelast
       //Make sure current_previous_writer is not zero and not local because we have already traversed and removed current_funcinst_ptr
-/*       if(current_previous_writer && current_previous_writer != current_funcinst_ptr) */
-/* 	traverse_and_remove_in_dependencelist(&current_previous_writer->consumerlist, temp_rangefirst, temp_rangelast - temp_rangefirst + 1); */
       current_previous_writer = temp;
       temp_rangefirst = ea + i;
       temp_rangelast = temp_rangefirst;
@@ -811,8 +779,6 @@ static void put_writer_singlesm(Addr ea, void *sm_temp, int datasize, funcinst *
       sm->last_reader[(ea + i) & 0xffff] = 0;
     }
   }
-/*   if(current_previous_writer && current_previous_writer != current_funcinst_ptr) */
-/*     traverse_and_remove_in_dependencelist(&current_previous_writer->consumerlist, temp_rangefirst, temp_rangelast - temp_rangefirst + 1); */
 }
 
 static void check_align_and_put_writer(Addr ea, int datasize, funcinst *current_funcinst_ptr, int tid){
@@ -864,7 +830,7 @@ static funcinst* create_funcinstlist (funcinst* caller, int fn_num, int tid){
   int k; funcinst *funcinsttemp;
   funcinfo *funcinfotemp;
   drwglobvars *thread_globvar = CLG_(thread_globvars)[tid];
-  char drw_filename[50], buf[4096]; SysRes res;
+  char drw_filename[50]; SysRes res;
 
   //We are guaranteed that a funcinfo exists for this by now.
   funcinfotemp = thread_globvar->funcarray[fn_num];
@@ -939,68 +905,11 @@ static funcinst* create_funcinstlist (funcinst* caller, int fn_num, int tid){
       
       funcinsttemp->res = res;
       funcinsttemp->fd = (Int) sr_Res(res);
-/*       VG_(sprintf)(buf, "%s,%s,%s,%s,%s # %s,%s,%s\nOR\n", "EVENT_NUM", "PRODUCER", "CONSUMER", "BYTES", "BYTES_UNIQ","TID","EVENT_NUM","SHARED_BYTES" ); */
-/*       VG_(write)(funcinsttemp->fd, (void*)buf, VG_(strlen)(buf)); */
-/*       VG_(sprintf)(buf, "%s,%s,%s,%s,%s,%s,%s,%s $ %s,%s,%s,%s,%s\n\n", "EVENT_NUM", "TID", "IOPS", "FLOPS", "LOC", "LOC_UNIQ", "MEM READS", "MEM WRITES", "TID","EVENT_NUM","RANGEFIRST","RANGELAST","SHARED_BYTES_UNIQ" ); */
-/*       VG_(write)(funcinsttemp->fd, (void*)buf, VG_(strlen)(buf)); */
-      
-      /*   VG_(sprintf)(buf, "%5s %15s %20s %20s %15s %15s %15s\n\n", "TID", "TYPE", "PRODUCER", "CONSUMER", "BYTES", "IOPS", "FLOPS"); */
-      /*   //  my_fwrite(fd, (void*)buf, VG_(strlen)(buf)); // This will end up writing into the orignial callgrind.out file */
-      /*   VG_(write)(funcinsttemp->fd, (void*)buf, VG_(strlen)(buf)); */
     }
     /***1. DONE CREATION***/
   }
 
   return funcinsttemp;
-}
-
-/***
- * Search the list to see if the context is present in the list
- * If it is present, returns 1, otherwise return 0
- */
-static int search_funcinstlist (funcinst** funcinstoriginal, Context* func_cxt, int cxt_size, funcinst** refarg, int tid){
-
-  //funcinst *funcinstpointer = *funcinstoriginal; //funcinstpointer is not used since we have an easy way of indexing the functioninsts via a fixed size array
-  int i, j, ilimit, temp_cxt_num, foundflag = 0;
-  funcinst *current_funcinst_ptr;
-  drwglobvars *thread_globvar;
-
-  if(thread_globvar->funcinst_first == 0){
-    //cxt_size should be 1 in this case. Do an assert.
-    if(cxt_size != 1)
-      tl_assert(0);
-    current_funcinst_ptr = create_funcinstlist(0, func_cxt->fn[0]->number, tid);
-    *refarg = current_funcinst_ptr;
-    return 0;
-  }
-  //Here we need to check if the context specified is in full or not.
-  if(func_cxt->fn[cxt_size - 1]->number == ((*funcinstoriginal)->fn_number)){ //Check if the top of the context is also the topmost function in the funcinst list. If its not, then the list is not full.
-    current_funcinst_ptr = *funcinstoriginal;
-    ilimit = cxt_size - 2;
-  }
-  else{ //Not handled at the moment
-    //For implementation hints see same section in insert_to_funcinstlist
-    VG_(printf)("\nPartial context not yet supported. Please increase the number of --separate-callers option when invoking callgrind\n");
-    tl_assert(0);
-  }
-
-  for(i = ilimit; i >= 0; i--){ //Traverse the list of the context of the current function, knowing that it starts from the first ever function.
-    temp_cxt_num = func_cxt->fn[i-1]->number;
-    for(j = 0; j < current_funcinst_ptr->num_callees; j++){ //Traverse all the callees of the currentfuncinst
-      if(current_funcinst_ptr->callees[j]->fn_number == temp_cxt_num){ //If the callee matches what is seen in the context, then update the currentfuncinst_ptr
-	current_funcinst_ptr = current_funcinst_ptr->callees[j];
-	foundflag = 1;
-	break;
-      }
-    }
-    if(foundflag != 1)
-      return 0;
-    else
-      foundflag = 0;
-  }
-
-  *refarg = current_funcinst_ptr;
-  return 1;
 }
 
 /***
@@ -1096,22 +1005,6 @@ static int insert_to_funcinstlist (funcinst** funcinstoriginal, Context* func_cx
 
 /***
  * Search the list to see if the function is present in the list
- * If it is present, returns 1, otherwise return 0
- */
-static int search_funcnodelist (funcinfo** funcinfooriginal, int func_num, funcinfo** refarg, int tid){
-  int funcarrayindex = func_num;
-  drwglobvars *thread_globvar = CLG_(thread_globvars)[tid];
-
-  if(thread_globvar->funcarray[funcarrayindex] != 0){ //If there is already an entry, just return positive
-    *refarg = thread_globvar->funcarray[funcarrayindex];
-    return 1;
-  }
-  *refarg = 0;
-  return 0;
-}
-
-/***
- * Search the list to see if the function is present in the list
  * If it is present, returns 1, otherwise insert and return 0
  */
 static int insert_to_funcnodelist (funcinfo **funcinfooriginal, int func_num, funcinfo **refarg, fn_node* function, int tid){
@@ -1154,237 +1047,12 @@ static int insert_to_funcnodelist (funcinfo **funcinfooriginal, int func_num, fu
   return 0;
 }
 
-static int insert_to_addrchunklist(addrchunk** chunkoriginal, Addr ea, Int datasize, ULong* refarg, int produced_list_flag, funcinst *current_funcinst_ptr) {
-  addrchunk *chunk = *chunkoriginal; // chunk points to the first element of addrchunk array.
-  addrchunknode *chunknodetemp = 0, *chunknodecurr = 0, *next_chunk = 0;
-  Addr range_first = ea, range_last = ea+datasize-1, curr_range_last;
-  ULong return_count = datasize, firsthash, lasthash, chunk_arr_idx, curr_count,arr_lasthash,curr_count_unique,firsthash_new;
-  int i, partially_found =0, return_value2=0;
-
-  // If the addrchunk array pointer is '0', indicating that there are no addresses inserted into the given addrchunk array,
-  // allocate the array and point it to the chunk. Every element of this new array is initialized with first hash, last hash and an original
-  // pointer that points to nothing
-  if(chunk == 0) {
-    chunk = (addrchunk*) CLG_MALLOC("cl.addrchunk.gc.1", (ADDRCHUNK_ARRAY_SIZE)*sizeof(addrchunk)); // check if its right
-    CLG_(num_addrchunks) += ADDRCHUNK_ARRAY_SIZE;
-    current_funcinst_ptr->num_addrchunks += ADDRCHUNK_ARRAY_SIZE;
-    *chunkoriginal = chunk;
-    for(i=0; i<ADDRCHUNK_ARRAY_SIZE; i++) {
-      (chunk+i)->first = (HASH_SIZE)*i;
-      (chunk+i)->last = (HASH_SIZE*i) + (HASH_SIZE -1 );
-      (chunk+i)->original = 0;
-    }
-  }
-  /*Total addrchunk array elements = ADDRCHUNK_ARRAY_SIZE
-    Each array element has a hash range of HASH_SIZE.
-    i.e., hash range of element i is i*HASH_SIZE to ((i+1)*HASH_SIZE)-1
-    Therefore, total hash range covered is 0 to HASH_SIZE * ADDRCHUNK_ARRAY_SIZE
-    
-    In the below code, hash of the given address range is calculated to
-    determine which element of the array should be searched. */
-  
-  firsthash = range_first % (HASH_SIZE * ADDRCHUNK_ARRAY_SIZE);
-  lasthash = range_last % (HASH_SIZE * ADDRCHUNK_ARRAY_SIZE);
-  firsthash_new = firsthash;
-  // do while iterates over addrchunk array elements till hash of the last range passed
-  // falls into an element's hash range.
-  
-  do {
-    //index of the array element that needs to be searched for the given address
-    //range is calculated below.
-    firsthash = firsthash_new;
-    chunk_arr_idx = firsthash/HASH_SIZE;
-    arr_lasthash=(chunk+chunk_arr_idx)->last;
-    
-    //hash of the last range is calculated and compared against the current array
-    //element's last hash to determine if the given address range should be split
-    if(lasthash > arr_lasthash || lasthash < firsthash) {
-      curr_range_last = range_first + (arr_lasthash-firsthash);
-      firsthash_new = (arr_lasthash+1)% (HASH_SIZE * ADDRCHUNK_ARRAY_SIZE);
-    } else curr_range_last = range_last;
-    
-    //if the determined array element contains any address chunks, then those address
-    //chunks are searched to determine if the address range being inserted is already present or should be inserted
-    // if the original pointer points to nothing, then a new node is inserted
-    
-    if((chunk+chunk_arr_idx)->original == 0) {
-      chunknodetemp = (addrchunknode*) CLG_MALLOC("c1.addrchunknode.gc.1",sizeof(addrchunknode));
-      CLG_(num_addrchunknodes)++;
-      current_funcinst_ptr->num_addrchunknodes++;
-      chunknodetemp -> prev = 0;
-      chunknodetemp -> next =0;
-      chunknodetemp -> rangefirst = range_first;
-      chunknodetemp -> rangelast = curr_range_last;
-      chunknodetemp -> count = curr_range_last - range_first + 1;
-      chunknodetemp -> count_unique = curr_range_last - range_first + 1;
-      (chunk+chunk_arr_idx)->original = chunknodetemp;
-    } // end of if that checks if original == 0
-    else {
-      chunknodecurr = (chunk+chunk_arr_idx)->original;
-      curr_count = curr_range_last - range_first +1;
-      
-      //while iterates over addrchunknodes present in the given array element until it finds
-      // the desired address or it reaches end of the list.
-      while(1) {
-	// if the address being inserted is less than current node's address, then a new node is inserted,
-	// and further search is terminated as the node's are in increasing order of addresses
-	if(curr_range_last < (chunknodecurr->rangefirst-1)) {
-	  chunknodetemp = (addrchunknode*) CLG_MALLOC("c1.addrchunknode.gc.1",sizeof(addrchunknode));
-	  CLG_(num_addrchunknodes)++;
-	  current_funcinst_ptr->num_addrchunknodes++;
-	  chunknodetemp -> prev = chunknodecurr->prev;
-	  chunknodetemp -> next = chunknodecurr;
-	  
-	  if(chunknodecurr->prev!=0) chunknodecurr -> prev->next = chunknodetemp;
-	  else (chunk+chunk_arr_idx)->original = chunknodetemp;
-	  chunknodecurr -> prev = chunknodetemp;
-	  chunknodetemp -> rangefirst = range_first;
-	  chunknodetemp -> rangelast = curr_range_last;
-	  chunknodetemp -> count_unique = curr_range_last - range_first + 1;
-	  chunknodetemp -> count = curr_count;
-	  break;
-	}
-	// if current node falls within the address range being inserted, then the current node is deleted and the
-	// counts are adjusted appropriately
-	else if((range_first <= (chunknodecurr->rangefirst-1)) && (curr_range_last >= (chunknodecurr->rangelast +1))) {
-	  return_value2 =1;
-	  return_count -= chunknodecurr->count_unique;
-	  partially_found =1;
-	  //We don't need to append in this case because the addresses we are writing will be noted as belonging to the current event and rightly so.
-	  //If the previous event that had a part of the addresses should have already been read from by any other thread by now.
-	  //Only bad code would do writes with no intervening read(in the case of threads it will be with locks of course)
-	  //if(produced_list_flag)
-	  //append_addr_to_event(chunknodecurr, range_first, curr_range_last);
-	  if(chunknodecurr->next ==0 ){
-	    chunknodecurr -> rangefirst = range_first;
-	    chunknodecurr -> rangelast = curr_range_last;
-	    chunknodecurr -> count_unique = curr_range_last - range_first + 1;
-	    chunknodecurr -> count += curr_count;
-	    break;
-	  }
-	  else {
-	    if(chunknodecurr->prev!=0) chunknodecurr->prev->next = chunknodecurr->next;
-	    else (chunk+chunk_arr_idx)->original = chunknodecurr->next;
-	    
-	    if(chunknodecurr->next!=0) chunknodecurr->next->prev = chunknodecurr->prev;
-	    curr_count += chunknodecurr->count;
-	    next_chunk = chunknodecurr ->next;
-	    VG_(free)(chunknodecurr);
-	    CLG_(num_addrchunknodes)--;
-	    current_funcinst_ptr->num_addrchunknodes--;
-	    chunknodecurr = next_chunk;
-	  }
-	}
-	// if the address being inserted is more than current node's address range, search continues with the next
-	// node
-	else if(range_first > (chunknodecurr->rangelast +1)){
-	  if(chunknodecurr->next != 0) chunknodecurr = chunknodecurr->next;
-	  else {
-	    
-	    chunknodetemp = (addrchunknode*) CLG_MALLOC("c1.addrchunknode.gc.1",sizeof(addrchunknode));
-	    CLG_(num_addrchunknodes)++;
-	    current_funcinst_ptr->num_addrchunknodes++;
-	    chunknodetemp -> prev = chunknodecurr;
-	    chunknodetemp -> next = 0;
-	    chunknodecurr -> next = chunknodetemp;
-	    
-	    chunknodetemp -> rangefirst = range_first;
-	    chunknodetemp -> rangelast = curr_range_last;
-	    chunknodetemp -> count_unique = curr_range_last - range_first + 1;
-	    chunknodetemp -> count = curr_count;
-	    break;
-	  }
-	}
-	// if the address range being inserted falls within the current node's address range, count of current node is adjusted
-	// appropriately, and the search is terminated
-	else if((range_first >= (chunknodecurr->rangefirst))&&(curr_range_last<=(chunknodecurr->rangelast))) {
-	  return_count -= (curr_range_last- range_first+1);
-	  partially_found =1;
-	  return_value2=1;
-	  chunknodecurr->count += curr_count;
-	  break;
-	}
-	
-	else {
-	  curr_count_unique = chunknodecurr -> count_unique;
-	  
-	  //if last address of the address range being inserted falls within current node, then range and count of current node
-	  // are adjusted appropriately and search is terminated
-	  if(range_first <= (chunknodecurr->rangefirst -1))
-	    {
-	      if(curr_range_last != (chunknodecurr->rangefirst -1)) return_value2 =1;
-	      return_count -= (curr_range_last - (chunknodecurr->rangefirst)+1);
-	      chunknodecurr -> rangefirst = range_first;
-	      chunknodecurr ->count +=curr_count;
-	      chunknodecurr -> count_unique = (chunknodecurr->rangelast) - (chunknodecurr->rangefirst) + 1;
-	      break;
-	    }
-	  // if the last address of the address range being inserted is after the current node's address,
-	  //and it is less than next node's start address, then current node's range is adjusted appropriately and the search terminates
-	  //This implicitly takes care of the case where rangefirst is greater than chunknodecurr->rangefirst but less than chunknodecurr->rangelast. This is true by process of elimination above.
-	  if((curr_range_last >= (chunknodecurr->rangelast +1)) &&((chunknodecurr->next ==0)||(curr_range_last < chunknodecurr->next->rangefirst -1)))  {
-	    if(range_first != (chunknodecurr->rangelast+1)) return_value2 =1;
-	    return_count -= ((chunknodecurr->rangelast)-range_first+1);
-	    chunknodecurr -> rangelast = curr_range_last;
-	    chunknodecurr -> count_unique = (chunknodecurr->rangelast) - (chunknodecurr->rangefirst) + 1;
-	    chunknodecurr -> count += curr_count;
-	    chunknodecurr = chunknodecurr->next;
-	    break;
-	  }
-	  
-	  // if the last address of the address range being inserted falls exactly at the edge or within the next node's range, then
-	  //current node is deleted and the search is continued
-	  else if((curr_range_last >= (chunknodecurr->rangelast +1)) &&(chunknodecurr->next !=0)&&(curr_range_last >= (chunknodecurr->next->rangefirst -1))) {
-	    if(range_first != (chunknodecurr->rangelast+1)) return_value2 =1;
-	    return_count -= ((chunknodecurr -> rangelast)- range_first +1);
-	    range_first = chunknodecurr->rangefirst;
-	    curr_count += chunknodecurr->count;
-	    if(chunknodecurr->prev!=0) chunknodecurr->prev->next = chunknodecurr->next;
-	    else (chunk+chunk_arr_idx)->original = chunknodecurr->next;
-	    
-	    if(chunknodecurr->next != 0) chunknodecurr->next->prev = chunknodecurr->prev;
-	    next_chunk = chunknodecurr->next;
-	    VG_(free)(chunknodecurr);
-	    CLG_(num_addrchunknodes)--;
-	    current_funcinst_ptr->num_addrchunknodes--;
-	    chunknodecurr = next_chunk;
-	  }
-	}
-	//break while loop if end of the addrchunknode list is reached
-	if(chunknodecurr ==0) break;
-      } // end of while (1)
-    } // end of else corresponding to original ==0 check
-      //Before moving to next array elements, range first is initialized to next element's range first
-
-    //PRINT WARNINGS WHEN BAD COUNT/COUNT_UNIQUES ARE ENCOUNTERED
-    if(chunknodecurr)
-      if((chunknodecurr->rangelast - chunknodecurr->rangefirst + 1) != chunknodecurr->count_unique)
-	VG_(printf)("Bad count_unique encountered\n");
-    if(chunknodetemp)
-      if((chunknodetemp->rangelast - chunknodetemp->rangefirst + 1) != chunknodetemp->count_unique)
-	VG_(printf)("Bad count_unique encountered\n");
-    
-    range_first = curr_range_last+1;
-    //while loop checks if the search should stop with the current array element, or it should continue.
-    // if the hash of the last range of the address being searched lies within current element's hash range,
-    // search stops. Second check takes care of the scenario where the address range being searched wraps around
-    // addrchunk array
-  } while (lasthash > arr_lasthash || lasthash<firsthash);
-  //number of addresses not found are returned
-  *refarg = return_count;
-  // if the address range is fully found, return 2
-  if (return_count ==0) partially_found =2;
-  // if the address range is partially found return 1, else return 0.
-  else if(return_value2 ==1) partially_found = 1;
-  return partially_found;
-}
-
 static int remove_from_addrchunklist(addrchunk** chunkoriginal, Addr ea, Int datasize, ULong* refarg, int produced_list_flag, funcinst *vert_parent_fn) {
 
   addrchunk *chunk = *chunkoriginal; // chunk points to the first element of addrchunk array.
   addrchunknode *chunknodetemp, *chunknodecurr, *next_chunk;
   Addr range_first = ea, range_last = ea+datasize-1, curr_range_last;
-  ULong return_count = datasize, firsthash, lasthash, chunk_arr_idx, curr_count,arr_lasthash, firsthash_new;
+  ULong return_count = datasize, firsthash, lasthash, chunk_arr_idx, arr_lasthash, firsthash_new;
   int partially_found =0, return_value2=0;
 
 
@@ -1426,7 +1094,6 @@ static int remove_from_addrchunklist(addrchunk** chunkoriginal, Addr ea, Int dat
     
     if((chunk+chunk_arr_idx)->original != 0) {
       chunknodecurr = (chunk+chunk_arr_idx)->original;
-      curr_count = curr_range_last - range_first +1;
       
       //while iterates over addrchunknodes present in the given array element until it finds
       // the desired address or it reaches end of the list.
@@ -1533,20 +1200,6 @@ static int remove_from_addrchunklist(addrchunk** chunkoriginal, Addr ea, Int dat
 }
 
 /***
- * Horizontally traverse the list and removes the address range
- * Returns nothing
- */
-static void traverse_and_remove_in_dependencelist (dependencelist_elemt** chunkoriginal, Addr ea, Int datasize){
-  dependencelist_elemt *chunk = *chunkoriginal;
-  ULong leftcount;
-
-  while(chunk){
-    remove_from_addrchunklist(&chunk->consumedlist, ea, datasize, &leftcount, 0, chunk->vert_parent_fn);
-    chunk = chunk->next_horiz;
-  }
-}
-
-/***
  * Given a funcinst, this function will check if any part of the address range passed in, is produced by the funcinst
  * Returns void
  */
@@ -1589,7 +1242,8 @@ dependencelist_elemt* insert_to_dependencelist(funcinst *current_funcinst_ptr, f
       temp_list->next = (dependencelist*) CLG_MALLOC("cl.funcinst.gc.1",sizeof(dependencelist));
       CLG_(num_dependencelists)++;
       current_funcinst_ptr->num_dependencelists++;
-      temp_list->next->size = temp_list->next->next = 0;
+      temp_list->next->next = 0;
+      temp_list->next->size = 0;
       temp_list->next->prev = temp_list;
       temp_list = temp_list->next;
     }
@@ -1625,23 +1279,18 @@ dependencelist_elemt* insert_to_dependencelist(funcinst *current_funcinst_ptr, f
  * Returns void
  */
 static __inline__
-//void insert_to_consumedlist (funcinst *current_funcinst_ptr, funcinst *consumed_fn, drwevent *consumed_event, Addr ea, Int datasize, ULong count_unique, ULong count_unique_event){
 void insert_to_consumedlist (funcinst *current_funcinst_ptr, funcinst *consumed_fn, ULong consumed_event, Addr ea, Int datasize, ULong count_unique, ULong count_unique_event){
   dependencelist_elemt *consumedfunc;
-  ULong leftcount, dummy; //int tid;
+  ULong dummy; //int tid;
 
   //found! Search the current function's consumedlist for the name/number of the function, create if necessary and add the address to that list
   //insert_to_consumedfunclist(&current_funcinst_ptr->consumedlist, consumed_fn, current_funcinst_ptr, &consumedfunc);
   consumedfunc = insert_to_dependencelist(current_funcinst_ptr, consumed_fn);
 
-  //No need for insert_to_addrchunklist since we started using last_reader mechanisms
-  //  insert_to_addrchunklist(&consumedfunc->consumedlist, ea, datasize, &leftcount, 0, current_funcinst_ptr);
   //Increment count in consumedfunclist and funcinfo
   consumedfunc->count += datasize;
-  //consumedfunc->count_unique += leftcount;
   consumedfunc->count_unique += count_unique;
   if(consumed_fn == current_funcinst_ptr){
-    //insert_to_drweventlist(0, 1, consumed_fn, 0, datasize, leftcount);
     insert_to_drweventlist(0, 1, consumed_fn, 0, datasize, count_unique);
     //To print out the range for local reads as well.
     insert_to_evtaddrchunklist(&CLG_(drwevent_latest_event)->rlist, ea, ea+datasize-1, &dummy, CLG_(drwevent_latest_event)->producer->tid, CLG_(drwevent_latest_event)->event_num);
@@ -1649,11 +1298,9 @@ void insert_to_consumedlist (funcinst *current_funcinst_ptr, funcinst *consumed_
   }
   if((consumed_fn != current_funcinst_ptr) && (consumed_fn != 0)){
     current_funcinst_ptr->ip_comm += datasize;
-    //current_funcinst_ptr->ip_comm_unique += leftcount;
     current_funcinst_ptr->ip_comm_unique += count_unique;
 
     if(CLG_(clo).drw_events){
-      //insert_to_drweventlist(1, 0, consumed_fn, current_funcinst_ptr, datasize, leftcount);
       insert_to_drweventlist(1, 0, consumed_fn, current_funcinst_ptr, datasize, count_unique);
 /*       if(consumed_event) */
 /* 	mark_event_shared(consumed_event, datasize, ea, ea + datasize - 1); //This should be changed to consumed_fn->tid, fn_number and funcinst_number so that we can also capture events for functions */
@@ -1695,7 +1342,7 @@ void handle_callreturn(funcinst *current_funcinst_ptr, funcinst *previous_funcin
 static __inline__ 
 fn_node* create_fake_fn_node(int tid)
 {
-  Char fnname[512];
+  HChar fnname[512];
   fn_node* fn = (fn_node*) CLG_MALLOC("cl.drw.nfnnd.1",
 				      sizeof(fn_node));
   VG_(sprintf)(fnname, "Thread-%d", tid);
@@ -1793,13 +1440,6 @@ void CLG_(storeIDRWcontext) (InstrInfo* inode, int datasize, Addr ea, Bool WR, i
 
 //ULTRA HACK DEBUGTRACE TO COMPARE WITH GEM5. Remove after tracing those problems out, unless this information proves useful
   if(CLG_(clo).drw_debugtrace){
-/*     //First check if this is a new function for this thread */
-/*     if(thread_globvar->previous_funcinst->fn_number != CLG_(current_state).cxt->fn[0]->number){ */
-/*       //Check if it is a call. If so, print it out */
-/*       if((thread_globvar->current_drwbbinfo.previous_bb->jmp[thread_globvar->current_drwbbinfo.previous_bb_jmpindex].jmpkind == jk_Call) && (thread_globvar->previous_funcinst->fn_number == CLG_(current_state).cxt->fn[1]->number)){ //Then check conditions */
-/* 	VG_(printf)("Call occurred around now to: %s\n", CLG_(current_state).cxt->fn[0]->name); */
-/*       } */
-/*     } */
     if(opsflag == 5)
       return;
     else if(!opsflag){
@@ -1807,10 +1447,10 @@ void CLG_(storeIDRWcontext) (InstrInfo* inode, int datasize, Addr ea, Bool WR, i
       CLG_(total_instrs) += datasize;
     }
     else if(opsflag == 1){
-      VG_(printf)("Thread %d PC: %x Read: %x.. %x, %d func: %s\n", CLG_(current_tid), CLG_(drw_current_instr), ea, ea+datasize, datasize, CLG_(current_state).cxt->fn[0]->name);
+      VG_(printf)("Thread %d PC: %lx Read: %lx.. %lx, %d func: %s\n", CLG_(current_tid), CLG_(drw_current_instr), ea, ea+datasize, datasize, CLG_(current_state).cxt->fn[0]->name);
     }
     else if(opsflag == 2){
-      VG_(printf)("Thread %d PC: %x Write: %x.. %x, %d func: %s\n", CLG_(current_tid), CLG_(drw_current_instr), ea, ea+datasize, datasize, CLG_(current_state).cxt->fn[0]->name);
+      VG_(printf)("Thread %d PC: %lx Write: %lx.. %lx, %d func: %s\n", CLG_(current_tid), CLG_(drw_current_instr), ea, ea+datasize, datasize, CLG_(current_state).cxt->fn[0]->name);
     }
     else if (opsflag > 5){ //Pthread event
       switch(opsflag){
@@ -1818,11 +1458,11 @@ void CLG_(storeIDRWcontext) (InstrInfo* inode, int datasize, Addr ea, Bool WR, i
 	break;
       case 6://mutex_lock
 	thread_globvar->in_pthread_api_call = 1;
-	VG_(printf)("Thread %d Pthread mutex lock: %x\n", CLG_(current_tid), ea);
+	VG_(printf)("Thread %d Pthread mutex lock: %lx\n", CLG_(current_tid), ea);
 	break;
       case 7://mutex_unlock
 	thread_globvar->in_pthread_api_call = 1;
-	VG_(printf)("Thread %d Pthread mutex unlock: %x\n", CLG_(current_tid), ea);
+	VG_(printf)("Thread %d Pthread mutex unlock: %lx\n", CLG_(current_tid), ea);
 	break;
       case 8://pthread_create
 	break;
@@ -1830,23 +1470,23 @@ void CLG_(storeIDRWcontext) (InstrInfo* inode, int datasize, Addr ea, Bool WR, i
 	break;
       case 10: //pthread_barrier_wait
 	thread_globvar->in_pthread_api_call = 1;
-	VG_(printf)("Thread %d Pthread barrier wait: %x\n", CLG_(current_tid), ea);
+	VG_(printf)("Thread %d Pthread barrier wait: %lx\n", CLG_(current_tid), ea);
 	break;
       case 11: //pthread_cond_wait
 	thread_globvar->in_pthread_api_call = 1;
-	VG_(printf)("Thread %d Pthread cond wait: %x\n", CLG_(current_tid), ea);
+	VG_(printf)("Thread %d Pthread cond wait: %lx\n", CLG_(current_tid), ea);
 	break;
       case 12: //pthread_cond_signal
 	thread_globvar->in_pthread_api_call = 1;
-	VG_(printf)("Thread %d Pthread cond signal: %x\n", CLG_(current_tid), ea);
+	VG_(printf)("Thread %d Pthread cond signal: %lx\n", CLG_(current_tid), ea);
 	break;
       case 13: //pthread_spin_lock
 	thread_globvar->in_pthread_api_call = 1;
-	VG_(printf)("Thread %d Pthread spin lock: %x\n", CLG_(current_tid), ea);
+	VG_(printf)("Thread %d Pthread spin lock: %lx\n", CLG_(current_tid), ea);
 	break;
       case 14: //pthread_spin_unlock
 	thread_globvar->in_pthread_api_call = 1;
-	VG_(printf)("Thread %d Pthread spin unlock: %x\n", CLG_(current_tid), ea);
+	VG_(printf)("Thread %d Pthread spin unlock: %lx\n", CLG_(current_tid), ea);
 	break;
       default:
 	VG_(printf)("Incorrect optype specified when inserting pthread to drweventlist");
@@ -1988,10 +1628,6 @@ void CLG_(storeIDRWcontext) (InstrInfo* inode, int datasize, Addr ea, Bool WR, i
       for(i = 0; i < temp_num_splits; i++){
 	insert_to_drweventlist(0, 2, current_funcinst_ptr, 0, temp_split_datasize, 0);
 	insert_to_evtaddrchunklist(&CLG_(drwevent_latest_event)->wlist, temp_ea, temp_ea + temp_split_datasize - 1, &dummy, CLG_(drwevent_latest_event)->producer->tid, CLG_(drwevent_latest_event)->event_num);
-/* 	if(CLG_(debug_count_events) < 600000){ */
-/* 	  VG_(printf)("Addr: %lu Datasize: %lu Event_num: %lu\n",temp_ea, temp_split_datasize, CLG_(drwevent_latest_event)->event_num); */
-/* 	  CLG_(debug_count_events)++; */
-/* 	} */
 	temp_ea += temp_split_datasize;
       }
       if(temp_splits_rem){
@@ -1999,13 +1635,6 @@ void CLG_(storeIDRWcontext) (InstrInfo* inode, int datasize, Addr ea, Bool WR, i
 	insert_to_evtaddrchunklist(&CLG_(drwevent_latest_event)->wlist, temp_ea, temp_ea + temp_split_datasize - 1, &dummy, CLG_(drwevent_latest_event)->producer->tid, CLG_(drwevent_latest_event)->event_num);
       }
       
-
-      //insert_to_drweventlist(0, 2, current_funcinst_ptr, 0, datasize, 0);
-      //insert_to_evtaddrchunklist(&CLG_(drwevent_latest_event)->wlist, ea, ea+datasize-1, &dummy, CLG_(drwevent_latest_event)->producer->tid, CLG_(drwevent_latest_event)->event_num);
-/*       if(CLG_(debug_count_events) < 5000){ */
-/* 	VG_(printf)("Addr: %lu Datasize: %lu Event_num: %lu\n",ea, datasize, CLG_(drwevent_latest_event)->event_num); */
-/* 	CLG_(debug_count_events)++; */
-/*       } */
       check_align_and_put_writer(ea, datasize, current_funcinst_ptr, threadarrayindex);
       //CLG_(put_in_last_write_cache)(datasize, ea, current_funcinst_ptr, threadarrayindex);
       CLG_(total_data_writes) += datasize; // 1;
@@ -2049,90 +1678,9 @@ void CLG_(storeIDRWcontext) (InstrInfo* inode, int datasize, Addr ea, Bool WR, i
 
 }
 
-/* Done with FUNCTIONS - inserted by Sid */
-
-/* FUNCTION CALLS ADDED TO PRINT ALL DATA ACCESSES FOR EVERY ADDRESS in LINKED LIST - Sid */
-
-/* static __inline__ */
-/* void dump_eventlist_to_file() */
-/* { */
-/*   //  int num_valid_threads = 0, i = 0; */
-/*   int j = 0; */
-/*   char buf[4096], drw_event_consumer[1024]; */
-/*   drweventlist* thread_list_temp; */
-/*   evt_addrchunknode *addrchunk_temp, *addrchunk_next; */
-/*   drwglobvars *thread_globvar; */
-
-/*   VG_(printf)("Printing events now\n"); */
-  
-/*   thread_list_temp = CLG_(drw_eventlist_start); */
-  
-/*   if(!thread_list_temp) */
-/*     return; */
-  
-/*   //Iterate over all chunks from start to end */
-/*   do{ */
-/*     //Iterate over all */
-/*     for(j = 0; j < thread_list_temp->size; j++){ */
-/*       //1. Print out the contents of the event */
-/*       if(thread_list_temp->list_chunk[j].consumer) */
-/* 	VG_(sprintf)(drw_event_consumer, "%s", thread_list_temp->list_chunk[j].consumer->function_info->function->name); */
-/*       else */
-/* 	VG_(sprintf)(drw_event_consumer, ""); */
-/*       //      VG_(sprintf)(buf, "%-5d %-15d %20s %20s %-15d %-15d %-15d\n", thread_list_temp->list_chunk[j].tid, thread_list_temp->list_chunk[j].type, thread_list_temp->list_chunk[j].producer->function_info->function->name, drw_event_consumer, thread_list_temp->list_chunk[j].bytes, thread_list_temp->list_chunk[j].iops, thread_list_temp->list_chunk[j].flops); */
-/*       if(!thread_list_temp->list_chunk[j].type){ */
-/* 	VG_(sprintf)(buf, "%lu,%d,%lu,%lu,%lu,%lu,%lu,%lu", thread_list_temp->list_chunk[j].event_num, thread_list_temp->list_chunk[j].producer->tid, thread_list_temp->list_chunk[j].iops, thread_list_temp->list_chunk[j].flops, thread_list_temp->list_chunk[j].non_unique_local, thread_list_temp->list_chunk[j].unique_local, thread_list_temp->list_chunk[j].total_mem_reads, thread_list_temp->list_chunk[j].total_mem_writes); */
-/* 	thread_globvar = CLG_(thread_globvars)[thread_list_temp->list_chunk[j].producer->tid]; */
-/*       } */
-/*       else{ */
-/* 	VG_(sprintf)(buf, "%lu,%d,%d,%lu,%lu", thread_list_temp->list_chunk[j].event_num, thread_list_temp->list_chunk[j].producer->tid, thread_list_temp->list_chunk[j].consumer->tid, thread_list_temp->list_chunk[j].bytes, thread_list_temp->list_chunk[j].bytes_unique); */
-/* 	thread_globvar = CLG_(thread_globvars)[thread_list_temp->list_chunk[j].consumer->tid]; */
-/*       } */
-
-/*       VG_(write)(thread_globvar->fd, (void*)buf, VG_(strlen)(buf)); */
-
-/*       //2. Print out the contents of the list of computation and communication events */
-/*       addrchunk_temp = thread_list_temp->list_chunk[j].list; */
-/*       while(addrchunk_temp){ */
-/* 	//Print out the dependences for this event in the same line */
-/* 	if(thread_list_temp->list_chunk[j].type) */
-/* 	  VG_(sprintf)(buf, " # %d %lu %lu %lu", addrchunk_temp->shared_read_tid, addrchunk_temp->shared_read_event_num, addrchunk_temp->rangefirst, addrchunk_temp->rangelast ); */
-/* 	else */
-/* 	  VG_(sprintf)(buf, " $ %d %lu %lu %lu", addrchunk_temp->shared_read_tid, addrchunk_temp->shared_read_event_num, addrchunk_temp->rangefirst, addrchunk_temp->rangelast ); */
-/* 	VG_(write)(thread_globvar->fd, (void*)buf, VG_(strlen)(buf)); */
-/* 	addrchunk_next = addrchunk_temp->next; */
-/* 	VG_(free)(addrchunk_temp); */
-/* 	CLG_(num_eventaddrchunk_nodes)--; */
-/* 	addrchunk_temp = addrchunk_next; */
-/*       } */
-/*       thread_list_temp->list_chunk[j].list = 0; */
-/*       //Print out the dependences for this event in the same line */
-/*       VG_(sprintf)(buf, "\n" ); */
-/*       VG_(write)(thread_globvar->fd, (void*)buf, VG_(strlen)(buf)); */
-/*     } */
-/* /\*     if(thread_list_temp->prev) *\/ */
-/* /\*       VG_(free)(thread_list_temp->prev); *\/ */
-/*     thread_list_temp->size = 0; */
-/*     if(thread_list_temp == CLG_(drw_eventlist_end)) */
-/*       break; */
-/*     thread_list_temp = thread_list_temp->next; */
-/*   } while(1); */
-/*     //  } while(thread_list_temp);//while(thread_list_temp != CLG_(drw_eventlist_end)); */
-
-/* /\*   //Clean up the last CLG_(drweventlist_end) also *\/ */
-/* /\*   CLG_(drw_eventlist_end)->prev = CLG_(drw_eventlist_end)->size = CLG_(drw_eventlist_end)->next = 0; *\/ */
-/* /\*   CLG_(drw_eventlist_end)->size = 0;  *\/ */
-/* /\*   CLG_(drw_eventlist_start) = CLG_(drw_eventlist_end); *\/ */
-/* /\*   CLG_(tot_eventinfo_size) = sizeof(drweventlist); *\/ */
-
-/*   //Clean up the last CLG_(drweventlist_end) also */
-/*   CLG_(drw_eventlist_end) = CLG_(drw_eventlist_start); */
-/*   tl_assert(!CLG_(num_eventaddrchunk_nodes)); */
-/* } */
-
 #define FWRITE_BUFSIZE 32000
 #define FWRITE_THROUGH 10000
-static Char fwrite_buf[FWRITE_BUFSIZE];
+static HChar fwrite_buf[FWRITE_BUFSIZE];
 static Int fwrite_pos;
 static Int fwrite_fd = -1;
 
@@ -2160,7 +1708,8 @@ static void my_fwrite(Int fd, Char* buf, Int len)
     fwrite_pos += len;
 }
 
-void dump_eventlist_to_file_serialfunc()
+static inline 
+void dump_eventlist_to_file_serialfunc(void)
 {
   char buf[4096];
   drwevent* event_list_temp;
@@ -2170,9 +1719,9 @@ void dump_eventlist_to_file_serialfunc()
 
   do{
     if(event_list_temp->type)
-      VG_(sprintf)(buf, "c%lu,%d,%d,%d,%d,%lu,%lu\n", event_list_temp->event_num, event_list_temp->consumer->fn_number, event_list_temp->consumer->funcinst_number, event_list_temp->producer->fn_number, event_list_temp->producer->funcinst_number, event_list_temp->bytes, event_list_temp->bytes_unique);
+      VG_(sprintf)(buf, "c%llu,%d,%d,%d,%d,%llu,%llu\n", event_list_temp->event_num, event_list_temp->consumer->fn_number, event_list_temp->consumer->funcinst_number, event_list_temp->producer->fn_number, event_list_temp->producer->funcinst_number, event_list_temp->bytes, event_list_temp->bytes_unique);
     else
-      VG_(sprintf)(buf, "o%lu,%d,%d,%lu,%lu,%lu,%lu\n", event_list_temp->event_num, event_list_temp->producer->fn_number, event_list_temp->producer->funcinst_number, event_list_temp->iops, event_list_temp->flops, event_list_temp->non_unique_local, event_list_temp->unique_local);
+      VG_(sprintf)(buf, "o%llu,%d,%d,%llu,%llu,%llu,%llu\n", event_list_temp->event_num, event_list_temp->producer->fn_number, event_list_temp->producer->funcinst_number, event_list_temp->iops, event_list_temp->flops, event_list_temp->non_unique_local, event_list_temp->unique_local);
 
     //VG_(write)(CLG_(drw_fd), (void*)buf, VG_(strlen)(buf));
     my_fwrite(CLG_(drw_fd), (void*)buf, VG_(strlen)(buf));
@@ -2181,11 +1730,10 @@ void dump_eventlist_to_file_serialfunc()
 }
 
 static __inline__
-void dump_eventlist_to_file()
+void dump_eventlist_to_file(void)
 {
   //  int num_valid_threads = 0, i = 0;
-  int j = 0;
-  char buf[4096], drw_event_consumer[1024];
+  char buf[4096];
   drwevent* event_list_temp;
   evt_addrchunknode *addrchunk_temp, *addrchunk_next;
   drwglobvars *thread_globvar;
@@ -2195,24 +1743,18 @@ void dump_eventlist_to_file()
 
   do{
     //1. Print out the contents of the event
-    //if(event_list_temp->consumer)
-    //VG_(sprintf)(drw_event_consumer, "%s", event_list_temp->consumer->function_info->function->name);
-    //else
-    //VG_(sprintf)(drw_event_consumer, "");
-    //VG_(sprintf)(buf, "%-5d %-15d %20s %20s %-15d %-15d %-15d\n", event_list_temp->tid, event_list_temp->type, event_list_temp->producer->function_info->function->name, drw_event_consumer, event_list_temp->bytes, event_list_temp->iops, event_list_temp->flops);
-   
     if(!event_list_temp->type){
       //VG_(sprintf)(buf, "%lu,%d,%lu,%lu,%lu,%lu,%lu,%lu", event_list_temp->event_num, event_list_temp->producer->tid, event_list_temp->iops, event_list_temp->flops, event_list_temp->non_unique_local, event_list_temp->unique_local, event_list_temp->total_mem_reads, event_list_temp->total_mem_writes);
-      VG_(sprintf)(buf, "%lu,%d,%lu,%lu,%lu,%lu", event_list_temp->event_num, event_list_temp->producer->tid, event_list_temp->iops, event_list_temp->flops, event_list_temp->total_mem_reads, event_list_temp->total_mem_writes);
+      VG_(sprintf)(buf, "%llu,%d,%llu,%llu,%llu,%llu", event_list_temp->event_num, event_list_temp->producer->tid, event_list_temp->iops, event_list_temp->flops, event_list_temp->total_mem_reads, event_list_temp->total_mem_writes);
       thread_globvar = CLG_(thread_globvars)[event_list_temp->producer->tid];
     }
     else if(event_list_temp->type == 1){
       //VG_(sprintf)(buf, "%lu,%d,%d,%lu,%lu", event_list_temp->event_num, event_list_temp->producer->tid, event_list_temp->consumer->tid, event_list_temp->bytes, event_list_temp->bytes_unique);
-      VG_(sprintf)(buf, "%lu,%d", event_list_temp->event_num, event_list_temp->consumer->tid);
+      VG_(sprintf)(buf, "%llu,%d", event_list_temp->event_num, event_list_temp->consumer->tid);
       thread_globvar = CLG_(thread_globvars)[event_list_temp->consumer->tid];
     }
     else if(event_list_temp->type == 2){
-      VG_(sprintf)(buf, "%lu,%d,pth_ty: %d", event_list_temp->event_num, event_list_temp->producer->tid, event_list_temp->optype);
+      VG_(sprintf)(buf, "%llu,%d,pth_ty: %d", event_list_temp->event_num, event_list_temp->producer->tid, event_list_temp->optype);
       thread_globvar = CLG_(thread_globvars)[event_list_temp->producer->tid];
     }
 
@@ -2224,7 +1766,7 @@ void dump_eventlist_to_file()
     while(addrchunk_temp){
       //Print out the dependences for this event in the same line
       if(event_list_temp->type)
-	VG_(sprintf)(buf, " WHAAT. This is wrong", addrchunk_temp->shared_read_tid, addrchunk_temp->shared_read_event_num, addrchunk_temp->rangefirst, addrchunk_temp->rangelast );
+	VG_(sprintf)(buf, " WHAAT. This is wrong");
       else
 	VG_(sprintf)(buf, " $ %lu %lu", addrchunk_temp->rangefirst, addrchunk_temp->rangelast );
       //VG_(write)(thread_globvar->previous_funcinst->fd, (void*)buf, VG_(strlen)(buf));
@@ -2243,7 +1785,7 @@ void dump_eventlist_to_file()
       if(event_list_temp->type == 2)
 	VG_(sprintf)(buf, " ^ %lu", addrchunk_temp->rangefirst);
       else if(event_list_temp->type == 1)
-	VG_(sprintf)(buf, " # %d %lu %lu %lu", addrchunk_temp->shared_read_tid, addrchunk_temp->shared_read_event_num, addrchunk_temp->rangefirst, addrchunk_temp->rangelast );
+	VG_(sprintf)(buf, " # %d %llu %llu %llu", addrchunk_temp->shared_read_tid, addrchunk_temp->shared_read_event_num, addrchunk_temp->rangefirst, addrchunk_temp->rangelast );
       else
 	VG_(sprintf)(buf, " * %lu %lu", addrchunk_temp->rangefirst, addrchunk_temp->rangelast );
       //VG_(write)(thread_globvar->previous_funcinst->fd, (void*)buf, VG_(strlen)(buf));
@@ -2275,7 +1817,7 @@ void dump_eventlist_to_file()
     event_list_temp++;
   } while(event_list_temp != CLG_(drw_eventlist_end)); //Since drw_eventlist_end points to the next entry which has not yet been written, we must process all entries upto but not including drw_eventlist_end. The moment event_list_temp gets incremented and points to 'end', the loop will terminate as expected.
   if(CLG_(num_eventaddrchunk_nodes))
-    VG_(printf)("Encountered %d un-freed nodes\n", CLG_(num_eventaddrchunk_nodes));
+    VG_(printf)("Encountered %llu un-freed nodes\n", CLG_(num_eventaddrchunk_nodes));
 }
 
 static __inline__
@@ -2418,26 +1960,6 @@ void insert_to_drweventlist( int type, int optype , funcinst *producer, funcinst
   }
 }
 
-static ULong aggregate_addrchunk_counts(addrchunk** chunkoriginal, ULong *refarg) {
-  addrchunk *chunk = *chunkoriginal;
-  ULong count=0, count_unique=0;
-  addrchunknode  *chunknodecurr;
-  int i;
-
-  if(chunk == 0) return 0;
-  for (i=0 ; i<ADDRCHUNK_ARRAY_SIZE; i++) {
-    chunknodecurr = (chunk+i)->original;
-    while (chunknodecurr !=0) {
-      count += chunknodecurr->count;
-      count_unique += chunknodecurr->count_unique;
-      chunknodecurr = chunknodecurr->next;
-    }
-  }
-
-  *refarg=count;
-  return count_unique;
-}
-
 static void print_for_funcinst (funcinst *funcinstpointer, int fd, char* caller, drwglobvars *thread_globvar){
   char drw_funcname[4096], buf[8192];
   int drw_funcnum, drw_funcinstnum, drw_tid;
@@ -2455,7 +1977,7 @@ static void print_for_funcinst (funcinst *funcinstpointer, int fd, char* caller,
   else
     VG_(sprintf)(drw_funcname, "%s", funcinstpointer->function_info->function->name);
 
-  VG_(sprintf)(buf, "%-20d %-20d %-20d %50s %20s %-20lu %-20lu %-20lu %-20lu %-20lu %-20lu %-20lu\n", funcinstpointer->tid, funcinstpointer->fn_number, funcinstpointer->funcinst_number, /*funcinstpointer->function_info->function->name*/drw_funcname, caller, funcinstpointer->instrs, funcinstpointer->flops, funcinstpointer->iops, funcinstpointer->ip_comm_unique, /*funcinstpointer->op_comm_unique*/zero, funcinstpointer->ip_comm, /*funcinstpointer->op_comm*/zero);
+  VG_(sprintf)(buf, "%-20d %-20d %-20d %50s %20s %-20llu %-20llu %-20llu %-20llu %-20llu %-20llu %-20llu\n", funcinstpointer->tid, funcinstpointer->fn_number, funcinstpointer->funcinst_number, /*funcinstpointer->function_info->function->name*/drw_funcname, caller, funcinstpointer->instrs, funcinstpointer->flops, funcinstpointer->iops, funcinstpointer->ip_comm_unique, /*funcinstpointer->op_comm_unique*/zero, funcinstpointer->ip_comm, /*funcinstpointer->op_comm*/zero);
   //VG_(write)(fd, (void*)buf, VG_(strlen)(buf));
   my_fwrite(fd, (void*)buf, VG_(strlen)(buf));
 
@@ -2487,8 +2009,7 @@ static void print_for_funcinst (funcinst *funcinstpointer, int fd, char* caller,
 	drw_tid = consumerfuncinfopointer->consumed_fn->tid;
       }
       
-      VG_(sprintf)(buf, "%-20d %-20d %-20d %50s %20s %-20lu %20s %20s %-20lu %-20lu %-20lu %-20lu\n", drw_tid, drw_funcnum, drw_funcinstnum, drw_funcname, " ", drw_funcinstr, " ", " ", consumerfuncinfopointer->count_unique, 0, consumerfuncinfopointer->count, 0);
-      //VG_(write)(fd, (void*)buf, VG_(strlen)(buf));
+      VG_(sprintf)(buf, "%-20d %-20d %-20d %50s %20s %-20llu %20s %20s %-20llu %-20d %-20llu %-20d\n", drw_tid, drw_funcnum, drw_funcinstnum, drw_funcname, " ", drw_funcinstr, " ", " ", consumerfuncinfopointer->count_unique, 0, consumerfuncinfopointer->count, 0);
       my_fwrite(fd, (void*)buf, VG_(strlen)(buf));
     }
     if(!dependencelistpointer->next) break;
@@ -2697,7 +2218,7 @@ static int insert_to_evtaddrchunklist(evt_addrchunknode** chunkoriginal, Addr ra
   evt_addrchunknode *chunknodetemp, *chunknodecurr, *next_chunk;
   Addr curr_range_last;
   ULong count = range_last - range_first + 1;
-  ULong return_count = count, curr_count;
+  ULong return_count = count ;
   int partially_found = 0, return_value2 = 0;
 
   curr_range_last = range_last;
@@ -2720,7 +2241,6 @@ static int insert_to_evtaddrchunklist(evt_addrchunknode** chunkoriginal, Addr ra
     } // end of if that checks if original == 0
     else {
       chunknodecurr = *chunkoriginal;
-      curr_count = curr_range_last - range_first +1;
       
       //while iterates over evt_addrchunknodes present in the given array element until it finds
       // the desired address or it reaches end of the list.
@@ -2845,135 +2365,6 @@ static int insert_to_evtaddrchunklist(evt_addrchunknode** chunkoriginal, Addr ra
   return partially_found;
 }
 
-/***
- * Search the list to see if the address range is present in the list
- * If fully present, returns 2, if partially present, returns 1, otherwise returns 0.
- */
-
-static int search_evtaddrchunklist(evt_addrchunknode** chunkoriginal, Addr range_first, Addr range_last, ULong* refarg, int* address_array) { //The local_flag indicates if the search is in a local produced list or not.
-
-  evt_addrchunknode *chunk = *chunkoriginal;  // chunk points to the first element of addrchunk array.
-  evt_addrchunknode *chunknodecurr;
-  Addr curr_range_last, curr_range_first;
-  ULong count = range_last - range_first + 1;
-  ULong datasize = count, return_count = count;
-  int i, partially_found =0, return_value2=0;
-
-  // If the addrchunk array pointer is '0', indicating that there are no addresses inserted into the given addrchunk array, return 0
-  if(chunk == 0) {
-    *refarg = datasize;
-    return 0;
-  }
-
-  curr_range_first = range_first;
-  curr_range_last = range_last;
-
-    //if the determined array element contains any address chunks, then those address
-    //chunks are searched, if not, then the search is done for the next array element.
-    // This process repeats until hash of the last range falls into an element's hash range.
-    if(chunk != 0) {
-
-      chunknodecurr = *chunkoriginal;
-      //while iterates over addrchunknodes present in the given array element until it finds
-      // the desired address or it reaches end of the list.
-      while(1) {
-	// if the address being looked for is less than the current node's address, then we
-	// don't need to search further nodes, as they are all in ascending order of their addresses
-	if (curr_range_last < chunknodecurr ->rangefirst) break;
-
-	// if the address being looked for lies within the current node's address range,then it is partially found
-	// and the next nodes are still searched to find if the last range falls into next node's address range
-	else if ((curr_range_first >= chunknodecurr->rangefirst) && (curr_range_last <= chunknodecurr->rangelast)) {
-	  for(i= (curr_range_first % range_first); i<=(curr_range_last % range_first); i++) address_array[i]=1;
-	  return_count -= (curr_range_last -curr_range_first +1);
-	  return_value2=1;
-	  chunknodecurr=chunknodecurr->next;
-	}
-
-	// if the current node falls within the address range being searched, then the return count and address_array
-	// are initialized appropriately and the search continues with the next node to determine if the last range
-	// falls within next node's address range
-	else if((curr_range_first <= chunknodecurr->rangefirst) && (curr_range_last >= chunknodecurr->rangelast)) {
-	  return_count -= chunknodecurr->rangelast - chunknodecurr->rangefirst + 1;
-	  partially_found =1;
-	  for(i= (chunknodecurr->rangefirst %range_first); i<=(chunknodecurr->rangelast % range_first); i++)
-	    address_array[i]=1;
-	  chunknodecurr = chunknodecurr->next;
-	  if(chunknodecurr !=0) continue;
-	  else break;
-	}
-
-	// Following two cases handle the cases where address range being searched either starts within current node
-	// or ends within current node. return_count and address_array are appropriately initialized, and then search
-	// continues with the next node.
-	else if((curr_range_first >= chunknodecurr->rangefirst)&& (curr_range_first <= chunknodecurr->rangelast)) {
-	  return_count -= (chunknodecurr->rangelast - curr_range_first +1);
-	  for(i=0; i<= (chunknodecurr->rangelast % range_first); i++)
-	    address_array[i] =1;
-	  partially_found =1;
-	  chunknodecurr = chunknodecurr->next;
-	}
-	else if((curr_range_last >= chunknodecurr->rangefirst)&& (curr_range_last <= chunknodecurr->rangelast)) {
-	  return_count -= (curr_range_last - chunknodecurr->rangefirst +1);
-	  for(i=(chunknodecurr->rangefirst % range_first); i<datasize; i++)
-	    address_array[i] =1;
-	  partially_found =1;
-	  break;
-	}
-	else chunknodecurr = chunknodecurr->next;
-
-	//break while loop if end of the addrchunknode list is reached
-	if(chunknodecurr ==0) break;
-      } // end of while (1)
-    } // end of if corresponding to original !=0 check
-
-  //number of addresses not found are returned
-  *refarg = return_count;
-  // if the address range is fully found, return 2
-  if(return_count ==0) return 2;
-  // if the address range is partially found return 1, else return 0.
-  else if (return_value2==1) partially_found =1;
-
-  return partially_found;
-}
-
-//For FIFO containers. Very simple. Don't check anything, just insert and leave.
-static void CLG_(push_pth_node_fifo)(pth_node** pth_node_first, pth_node** pth_node_last, Addr addr, ULong threadmap){
-  pth_node *temp = *pth_node_first;
-  //Malloc the new node that has to go in anyway
-  pth_node *temp_malloc;
-  temp_malloc = (pth_node*) CLG_MALLOC("c1.pth_node.gc.1",sizeof(pth_node));
-  temp_malloc->addr = addr; temp_malloc->threadmap = threadmap;
-  temp_malloc->next = temp_malloc->prev = 0;
-  if(*pth_node_last){
-    (*pth_node_last)->next = temp_malloc;
-    temp_malloc->prev = *pth_node_last;
-  }
-  *pth_node_last = temp_malloc; // Make sure it is the last node
-
-  //1. If there is no node prior to this
-  if(!(*pth_node_first)){
-    *pth_node_first = temp_malloc;
-  }
-}
-
-//For FIFO containers. Very simple. Don't check anything, just insert and leave.
-static void CLG_(pop_pth_node_fifo)(pth_node** pth_node_first, pth_node** pth_node_last, Addr *addr, ULong *threadmap){
-  pth_node *temp = *pth_node_first;
-  *addr = 0;
-  *threadmap = 0;
-  if(*pth_node_last){
-    temp = (*pth_node_last)->prev;
-    if(temp){
-      temp->next = 0;
-    }
-    *addr = (*pth_node_last)->addr;
-    *threadmap = (*pth_node_last)->threadmap;
-    VG_(free)(*pth_node_last);
-    *pth_node_last = temp;
-  }
-}
-
 //For FIFO containers. Very simple. Don't check anything, just insert and leave.
 static void CLG_(pth_node_insert)(pth_node** pth_node_first, pth_node** pth_node_last, Addr addr, int tid){
   pth_node *temp = *pth_node_first;
@@ -3035,7 +2426,7 @@ static void CLG_(pth_node_outsert)(pth_node** pth_node_first, pth_node** pth_nod
 
 //FUNCTION CALLS TO INSTRUMENT THIGNS DURING SYSTEM CALLS
 
-void CLG_(new_mem_startup) ( Addr start_a, UInt len,
+void CLG_(new_mem_startup) ( Addr start_a, SizeT len,
 			     Bool rr, Bool ww, Bool xx, ULong di_handle )
 {
   Context *cxt;
@@ -3062,7 +2453,7 @@ void CLG_(new_mem_startup) ( Addr start_a, UInt len,
 
 }
 
-void CLG_(new_mem_mmap) ( Addr a, UInt len, Bool rr, Bool ww, Bool xx, ULong di_handle )
+void CLG_(new_mem_mmap) ( Addr a, SizeT len, Bool rr, Bool ww, Bool xx, ULong di_handle )
 {  
    // (Ignore permissions)
    // Make it look like any other syscall that outputs to memory
@@ -3076,7 +2467,7 @@ void CLG_(new_mem_mmap) ( Addr a, UInt len, Bool rr, Bool ww, Bool xx, ULong di_
   }
 }
 
-void CLG_(new_mem_brk) ( Addr a, UInt len, ThreadId tid )
+void CLG_(new_mem_brk) ( Addr a, SizeT len, ThreadId tid )
 {
   //rx_new_mem("brk",  RX_(specials)[SpBrk], a, len, False);
   //  VG_(printf)("=  new brk mem: %x..%x, %d, function: %s\n", a, a+len,len, CLG_(current_state).cxt->fn[0]->name);
@@ -3112,27 +2503,27 @@ void rx_pre_mem_read_common(CorePart part, Bool is_asciiz, Addr a, UInt len)
   }
 }
 
-void CLG_(pre_mem_read_asciiz)(CorePart part, ThreadId tid, Char* s, Addr a)
+void CLG_(pre_mem_read_asciiz)(CorePart part, ThreadId tid, const HChar* s, Addr a)
 {
-   UInt len = VG_(strlen)( (Char*)a );
+   UInt len = VG_(strlen)( (HChar*)a );
    // Nb: no +1 for '\0' -- we don't want to print it on the graph
    rx_pre_mem_read_common(part, /*is_asciiz*/True, a, len);
 }
 
-void CLG_(pre_mem_read)(CorePart part, ThreadId tid, Char* s, Addr a, UInt len)
+void CLG_(pre_mem_read)(CorePart part, ThreadId tid, const HChar* s, Addr a, SizeT len)
 {
   rx_pre_mem_read_common(part, /*is_asciiz*/False, a, len);
 }
 
-void CLG_(pre_mem_write)(CorePart part, ThreadId tid, Char* s, 
-                             Addr a, UInt len)
+void CLG_(pre_mem_write)(CorePart part, ThreadId tid, const HChar* s, 
+                             Addr a, SizeT len)
 {
   //VG_(printf)("=  pre mem write: %x..%x, %d, function: %s\n", a, a+len,len, CLG_(current_state).cxt->fn[0]->name);
 }
 
 //I read somewhere that post functions are not called if the syscall fails or returns an errorl.
 void CLG_(post_mem_write)(CorePart part, ThreadId tid,
-			     Addr a, UInt len)
+			     Addr a, SizeT len)
 {
    if (-1 != CLG_(current_syscall)) {
 

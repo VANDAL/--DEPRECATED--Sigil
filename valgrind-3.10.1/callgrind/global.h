@@ -111,8 +111,10 @@ struct _CommandLineOptions {
   Bool simulate_cache;      /* Call into cache simulator ? */
   Bool simulate_branch;     /* Call into branch prediction simulator ? */
 
-  /* Sigil options */
-  Bool sigil_on;
+  /* Call graph generation */
+  Bool pop_on_jump;       /* Handle a jump between functions as ret+call */
+
+  /*FUNCTION CALL ADDED TO COUNT ALL OPERATIONS - Sid*/
   Bool drw_thread_or_func;
   Int drw_splitcomp;
   Bool drw_events;
@@ -122,9 +124,7 @@ struct _CommandLineOptions {
   Bool drw_debugtrace;
   Bool drw_syscall;
   Bool drw_intercepts;
-
-  /* Call graph generation */
-  Bool pop_on_jump;       /* Handle a jump between functions as ret+call */
+  /* Done with FUNCTION CALL - inserted by Sid */
 
 #if CLG_ENABLE_DEBUG
   Int   verbose;
@@ -678,7 +678,9 @@ struct cachesim_if
 #define EG_BUS   6
 #define EG_ALLOC 7
 #define EG_SYS   8
-#define EG_OPS   9 //< Sigil
+/*Added to count flops and iops*/
+#define EG_OPS   9
+/*Done addition by Sid*/
 
 struct event_sets {
     EventSet *base, *full;

@@ -728,6 +728,23 @@ static void addEvent_Ir ( ClgState* clgs, InstrInfo* inode )
    clgs->events_used++;
 }
 
+/// Sigil
+static void addEvent_Op ( ClgState* clgs, InstrInfo* inode , IRType* type)
+{
+   Event* evt;
+//   tl_assert(clgs->seen_before || (inode->eventset == 0));
+
+   if (clgs->events_used == N_EVENTS)
+      flushEvents(clgs);
+   tl_assert(clgs->events_used >= 0 && clgs->events_used < N_EVENTS);
+   evt = &clgs->events[clgs->events_used];
+   init_Event(evt);
+   evt->tag      = Ev_Op;
+   evt->inode    = inode;
+   evt->Ev.Op.Op = *type;
+   clgs->events_used++;
+}
+
 static
 void addEvent_Dr ( ClgState* clgs, InstrInfo* inode, Int datasize, IRAtom* ea )
 {
@@ -881,23 +898,6 @@ void addEvent_G ( ClgState* clgs, InstrInfo* inode )
    init_Event(evt);
    evt->tag       = Ev_G;
    evt->inode     = inode;
-   clgs->events_used++;
-}
-
-/// Sigil
-static void addEvent_Op ( ClgState* clgs, InstrInfo* inode , IRType* type)
-{
-   Event* evt;
-//   tl_assert(clgs->seen_before || (inode->eventset == 0));
-
-   if (clgs->events_used == N_EVENTS)
-      flushEvents(clgs);
-   tl_assert(clgs->events_used >= 0 && clgs->events_used < N_EVENTS);
-   evt = &clgs->events[clgs->events_used];
-   init_Event(evt);
-   evt->tag      = Ev_Op;
-   evt->inode    = inode;
-   evt->Ev.Op.Op = *type;
    clgs->events_used++;
 }
 
@@ -1196,14 +1196,15 @@ IRSB* CLG_(instrument)( VgCallbackClosure* closure,
 
 	 case Ist_WrTmp: {
 	    IRExpr* data = st->Ist.WrTmp.data;
-	    if (data->tag == Iex_Load) {
-	       IRExpr* aexpr = data->Iex.Load.addr;
-	       // Note also, endianness info is ignored.  I guess
-	       // that's not interesting.
-	       addEvent_Dr( &clgs, curr_inode,
-			    sizeofIRType(data->Iex.Load.ty), aexpr );
+	    switch (data->tag) {
+	    case Iex_Load: {
+	      IRExpr* aexpr = data->Iex.Load.addr;
+	      // Note also, endianness info is ignored.  I guess
+	      // that's not interesting.
+	      addEvent_Dr( &clgs, curr_inode,
+			   sizeofIRType(data->Iex.Load.ty), aexpr );
+	      break;
 	    }
-              switch (data->tag) {
               case Iex_Triop: {
                 //IRExpr* aexpr = data->Iex.Triop.addr;
                 IRType op = typeOfIRExpr(sbIn->tyenv, data);
@@ -1987,20 +1988,21 @@ static
 void CLG_(pre_syscalltime)(ThreadId tid, UInt syscallno,
                            UWord* args, UInt nArgs)
 {
-/// Sigil
-/* Accurately follow what happens during a syscall */
-    if(CLG_(clo).drw_syscall){
-      int i, len; Addr a;
-      CLG_(current_syscall) = syscallno;
-      CLG_(current_syscall_tid) = CLG_(current_tid);
-      //  VG_(printf)("Entered syscall: Syscallno = %d, function: %s\n",syscallno, CLG_(current_state).cxt->fn[0]->name);
-      for(i = 0; i < CLG_(syscall_addrchunk_idx); i++){
-        len = CLG_(syscall_addrchunks)[i].last - CLG_(syscall_addrchunks)[i].first + 1;
-        a = CLG_(syscall_addrchunks)[i].first;
-        CLG_(storeIDRWcontext)( NULL, len, a, 0, 1);
-      }
-      CLG_(syscall_addrchunk_idx) = 0;
+/*Added the following code to accurately follow what happens during a syscall*/
+  if(CLG_(clo).drw_syscall){
+    int i, len; Addr a;
+    CLG_(current_syscall) = syscallno;
+    CLG_(current_syscall_tid) = CLG_(current_tid);
+    //  VG_(printf)("Entered syscall: Syscallno = %d, function: %s\n",syscallno, CLG_(current_state).cxt->fn[0]->name);
+    for(i = 0; i < CLG_(syscall_addrchunk_idx); i++){
+      len = CLG_(syscall_addrchunks)[i].last - CLG_(syscall_addrchunks)[i].first + 1;
+      a = CLG_(syscall_addrchunks)[i].first;
+      CLG_(storeIDRWcontext)( NULL, len, a, 0, 1);
     }
+    CLG_(syscall_addrchunk_idx) = 0;
+  }
+/*Done addition by Sid*/
+
   if (CLG_(clo).collect_systime) {
 #if CLG_MICROSYSTIME
     struct vki_timeval tv_now;
@@ -2043,20 +2045,18 @@ void CLG_(post_syscalltime)(ThreadId tid, UInt syscallno,
     CLG_(current_state).bbcc->skipped[o+1] += diff;
   }
 
-/// Sigil
-/* Accurately follow what happens during a syscall */
-	if(CLG_(clo).drw_syscall){
-		if(CLG_(current_syscall_tid) == CLG_(current_tid))
-      //if(CLG_(current_syscall_tid) == CLG_(current_tid))
-        //tl_assert(CLG_(current_syscall) == syscallno);
+/*Added the following code to accurately follow what happens during a syscall*/
+  if(CLG_(clo).drw_syscall){
+    if(CLG_(current_syscall_tid) == CLG_(current_tid))
+      //tl_assert(CLG_(current_syscall) == syscallno);
       if(CLG_(current_syscall) != syscallno)
-        VG_(printf)("Issues with Syscalls not matching. Syscall no. %d just finished, but the last active syscall was %d\n",syscallno, CLG_(current_syscall));
-      //   VG_(printf)("Syscall ended: Syscallno = %d, function: %s\n", syscallno, CLG_(current_state).cxt->fn[0]->name);
-      /*    //------------------------------------------------------------------------ */
-      CLG_(current_syscall) = -1;
-      CLG_(current_syscall_tid) = -1;
-    }
-
+	VG_(printf)("Issues with Syscalls not matching. Syscall no. %d just finished, but the last active syscall was %d\n",syscallno, CLG_(current_syscall));
+    //   VG_(printf)("Syscall ended: Syscallno = %d, function: %s\n", syscallno, CLG_(current_state).cxt->fn[0]->name);
+    /*    //------------------------------------------------------------------------ */
+    CLG_(current_syscall) = -1;
+    CLG_(current_syscall_tid) = -1;
+  }
+/*Done addition by Sid*/
 }
 
 static UInt ULong_width(ULong n)
@@ -2197,11 +2197,10 @@ void finish(void)
    */
   CLG_(forall_threads)(unwind_thread);
 
-  /// Sigil
-  /* Function calls added to callgrind to put all data accesses for every address in a linked list */
-    CLG_(print_to_file) ();
-    CLG_(free_funcarray)();
-
+  /* FUNCTION CALLS ADDED TO PUT ALL DATA ACCESSES FOR EVERY ADDRESS IN A LINKED LIST - Sid */
+  CLG_(print_to_file) ();
+  CLG_(free_funcarray)();
+  /* Done with FUNCTION CALLS - inserted by Sid */
   CLG_(dump_profile)(0, False);
 
   if (VG_(clo_verbosity) == 0) return;
@@ -2308,10 +2307,9 @@ void CLG_(post_clo_init)(void)
    }
 
    CLG_(init_dumps)();
-
-  /// Sigil
-  /* Function calls added to callgrind to put all data accesses for every address in a linked list - Sid */
-     CLG_(init_funcarray)();
+  /* FUNCTION CALLS ADDED TO PUT ALL DATA ACCESSES FOR EVERY ADDRESS IN A LINKED LIST - Sid */
+  CLG_(init_funcarray)();
+  /* Done with FUNCTION CALLS - inserted by Sid */
 
    (*CLG_(cachesim).post_clo_init)();
 
@@ -2378,9 +2376,8 @@ void CLG_(pre_clo_init)(void)
 
     CLG_(set_clo_defaults)();
 
-    /// Sigil
     /* Accurately follow what happens during a syscall */
-    VG_(track_pre_mem_read)        ( & CLG_(pre_mem_read)        );
+    VG_(track_pre_mem_read)        ( CLG_(pre_mem_read)        );
     VG_(track_pre_mem_read_asciiz) ( CLG_(pre_mem_read_asciiz) );
     VG_(track_pre_mem_write)       ( CLG_(pre_mem_write)       );
     VG_(track_post_mem_write)      ( CLG_(post_mem_write)      );
