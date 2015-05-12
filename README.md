@@ -36,18 +36,15 @@ where is the sigil directory. Make sure your binary is compiled with debug
 flags.
 
 ```sh
-$ ./run_sigil.sh <user binary>
+$ ./run_sigil_and_gz.py <sigil options> <user binary>
 ```
 
 This results in a file called "sigil.total.out.<thread_number>"
-For example if I wanted to get sigil results for the 'ls' command:
+For example if I wanted to get sigil traces for an 8-thread execution of the FFT benchmark:
 
 ```sh
-$ ./run_sigil.sh ls -lah
+$ ./runsigil_and_gz.py --fair-sched=yes --tool=callgrind --separate-callers=100 --toggle-collect=main --cache-sim=yes --dump-line=no --drw-func=no --drw-events=yes --drw-splitcomp=1 --drw-intercepts=yes --drw-syscall=no --branch-sim=yes --separate-threads=yes --callgrind-out-file=callgrind.out.threads ./FFT -m16 -p8 -l6 -t
 ```
-
-However my results would probably not be very useful because 'ls' was probably
-not compiled with debug flags
 
 More information about running the tool and its options can be found in the
 provided documentation.
