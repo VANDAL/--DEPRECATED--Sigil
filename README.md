@@ -27,6 +27,21 @@ $ ./configure
 $ ./make check
 ```
 
+#####Compiling User Programs
+
+Prior to generating traces through executing Sigil on the user program, one must compile their program using debugging symbols (i.e. -g ). Also, the Valgrind intercept wrapper script must be linked on compilation. This wrapper script enables detecting and logging pthread calls during trace capture. The source code to this pthread wrapper is tools/wrapper.c and must first be compiled then statically linked during the compilation of the user program.
+
+An example of compling this wrapper script follows:
+
+```sh
+$ gcc -static -Wall -g -DVGO_linux=1 -c wrapper.c -I <SIGIL PATH>/valgrind-3.10.1/include/ -I <SIGIL PATH>/valgrind-3.10.1/ -I <SIGIL PATH>/valgrind-3.10.1/callgrind -o wrapper.o
+```
+
+An example of the CC flags for compiling the user program for Sigil follows:
+
+```sh
+$ -O3 -lpthread -D_POSIX_C_SOURCE=200112 -g -static <SIGIL PATH>/tools/wrapper.o -D__USE_GNU
+```
 
 #####Running Sigil
 
@@ -39,11 +54,17 @@ flags.
 $ ./run_sigil_and_gz.py <sigil options> <user binary>
 ```
 
-This results in a file called "sigil.total.out.<thread_number>"
+This results in trace files called "sigil.events.out-<thread_number>.gz"
 For example if I wanted to get sigil traces for an 8-thread execution of the FFT benchmark:
 
 ```sh
 $ ./runsigil_and_gz.py --fair-sched=yes --tool=callgrind --separate-callers=100 --toggle-collect=main --cache-sim=yes --dump-line=no --drw-func=no --drw-events=yes --drw-splitcomp=1 --drw-intercepts=yes --drw-syscall=no --branch-sim=yes --separate-threads=yes --callgrind-out-file=callgrind.out.threads ./FFT -m16 -p8 -l6 -t
+```
+
+After the traces are generated, a pthread meta-data file (sigil.pthread.out) must be created by using the generate_pthread_file.py script on the generated err.gz file.
+
+```sh
+$ ./generate_pthread_file.py err.gz
 ```
 
 More information about running the tool and its options can be found in the
