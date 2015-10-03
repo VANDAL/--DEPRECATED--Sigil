@@ -51,7 +51,7 @@ where is the sigil directory. Make sure your binary is compiled with debug
 flags.
 
 ```sh
-$ ./run_sigil_and_gz.py <sigil options> <user binary>
+$ ./runsigil_and_gz.py <sigil options> <user binary>
 ```
 
 This results in trace files called "sigil.events.out-<thread_number>.gz"
