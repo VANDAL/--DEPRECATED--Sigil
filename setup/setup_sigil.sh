@@ -40,8 +40,10 @@ echo "$lineheader Sigil build complete!"
 echo "$lineheader Modifying Sigil run script paths"
 runscript_path="$sigil_path/runsigil_and_gz.py"
 
+cd $sigil_path
+
 runscript_blank="vg_in_place = \"\""
-runscript_vg="vg_in_place = \"$valgrind/vg-in-place\""
+runscript_vg="vg_in_place = \"$sigil_path/$valgrind/vg-in-place\""
 
 sed -i "s|$runscript_blank|$runscript_vg|" $runscript_path
 

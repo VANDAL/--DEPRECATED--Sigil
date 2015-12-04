@@ -51,7 +51,7 @@ where is the sigil directory. Make sure your binary is compiled with debug
 flags.
 
 ```sh
-$ ./run_sigil_and_gz.py <sigil options> <user binary>
+$ ./runsigil_and_gz.py <sigil options> <user binary>
 ```
 
 This results in trace files called "sigil.events.out-<thread_number>.gz"
@@ -70,7 +70,36 @@ $ ./generate_pthread_file.py err.gz
 More information about running the tool and its options can be found in the
 provided documentation.
 
-#####Postprocessing
+#####Running provided example
+
+We include an FFT example derived from the Splash-2 benchmark suite.
+First build Sigil using the instructions above in "Building Sigil" and navigate back to the main Sigil folder. 
+Then follow the instructions below:
+
+```sh
+$ cd tools
+$ gcc -static -Wall -g -DVGO_linux=1 -c wrapper.c -I ../valgrind-3.10.1/include/ -I ../valgrind-3.10.1/ -I ../valgrind-3.10.1/callgrind -o wrapper.o
+$ cd ..
+```
+
+The wrapper should now be compiled.
+
+```sh
+$ cd example
+```
+
+In this example folder you should find a Makefile for the FFT example. Note the CFLAGS variable in the Makefile.
+To use Sigil to generate traces, we need the following flags to be added: "-g -static <SIGIL_PATH>/tools/wrapper.o".
+Such a line is already provided in the Makefile, but is commented out. Uncomment the appropriate line and comment out the line that is active by default.
+
+```sh
+$ make
+$ ./run_example.sh
+```
+
+run_example.sh is a bash script that contains the lines mentioned above in the "Running Sigil" section.
+If you modified the Makefile correctly, when the bash script finishes, the folder should contain traces for all the 8 threads (-p8 runs the 8-threaded version of FFT) and the pthread meta-data file.
+This folder can simply be specified for the Replay portion of SynchroTrace.
 
 #####Restrictions
 
