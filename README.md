@@ -29,26 +29,36 @@ $ ./make check
 
 #####Compiling User Programs
 
-Prior to generating traces through executing Sigil on the user program, one must compile their program using debugging symbols (i.e. -g ). Also, the Valgrind intercept wrapper script must be linked on compilation. This wrapper script enables detecting and logging pthread calls during trace capture. The source code to this pthread wrapper is tools/wrapper.c and must first be compiled then statically linked during the compilation of the user program.
+Prior to generating traces through executing Sigil on the user program, one 
+must compile the synchronization function intercept wrapper script as a
+shared object. This wrapper script enables detecting and logging Pthread calls
+and OpenMP during trace capture. The source code to this pthread wrapper is 
+tools/wrapper_openmp.c and must first be compiled then dynmically preloaded 
+during the trace generation of the user program. Compiling the wrapper for 
+capturing OpenMP function calls requires the source gcc library associated 
+with the locally used gcc binary.
 
-An example of compling this wrapper script follows:
+An example of compiling this wrapper script follows:
+
+Download and untar the gcc source library for the locally used gcc binary:
 
 ```sh
-$ gcc -static -Wall -g -DVGO_linux=1 -c wrapper.c -I <SIGIL PATH>/valgrind-3.10.1/include/ -I <SIGIL PATH>/valgrind-3.10.1/ -I <SIGIL PATH>/valgrind-3.10.1/callgrind -o wrapper.o
+$cd <SIGIL_PATH>/tools
+$wget http://www.netgull.com/gcc/releases/gcc-4.9.2/gcc-4.9.2.tar.gz
+$tar zxf gcc-4.9.2.tar.gz && rm gcc-4.9.2.tar.gz
 ```
-
-An example of the CC flags for compiling the user program for Sigil follows:
+Compile the wrapper script:
 
 ```sh
-$ -O3 -lpthread -D_POSIX_C_SOURCE=200112 -g -static <SIGIL PATH>/tools/wrapper.o -D__USE_GNU
+$cd <SIGIL_PATH>/tools
+$gcc -Wall -g -DVGO_linux=1 -fPIC <SIGIL_PATH>/tools/wrapper_openmp.c -I ../valgrind-3.10.1/include/ -I ../valgrind-3.10.1/ -I ../valgrind-3.10.1/callgrind -I gcc-4.9.2/libgomp/ -I gcc-4.9.2/libgcc/ -I gcc-4.9.2/libgomp/config/linux/ -shared -o wrapper.so
 ```
 
 #####Running Sigil
 
-An included script will run sigil with the most common options. Note that
+An included script will run Sigil with the most common options. Note that
 the user must first edit this script with some default paths to let it know
-where is the sigil directory. Make sure your binary is compiled with debug
-flags.
+where is the sigil directory.
 
 ```sh
 $ ./runsigil_and_gz.py <sigil options> <user binary>
@@ -58,7 +68,7 @@ This results in trace files called "sigil.events.out-<thread_number>.gz"
 For example if I wanted to get sigil traces for an 8-thread execution of the FFT benchmark:
 
 ```sh
-$ ./runsigil_and_gz.py --fair-sched=yes --tool=callgrind --separate-callers=100 --toggle-collect=main --cache-sim=yes --dump-line=no --drw-func=no --drw-events=yes --drw-splitcomp=1 --drw-intercepts=yes --drw-syscall=no --branch-sim=yes --separate-threads=yes --callgrind-out-file=callgrind.out.threads ./FFT -m16 -p8 -l6 -t
+$ LD_PRELOAD=<SIGIL_PATH>/tools/wrapper.so ./runsigil_and_gz.py --fair-sched=yes --tool=callgrind --separate-callers=100 --toggle-collect=main --cache-sim=yes --dump-line=no --drw-func=no --drw-events=yes --drw-splitcomp=1 --drw-intercepts=yes --drw-syscall=no --branch-sim=yes --separate-threads=yes --callgrind-out-file=callgrind.out.threads ./FFT -m16 -p8 -l6 -t
 ```
 
 After the traces are generated, a pthread meta-data file (sigil.pthread.out) must be created by using the generate_pthread_file.py script on the generated err.gz file.
@@ -72,7 +82,7 @@ provided documentation.
 
 #####Running provided example
 
-We include an FFT example derived from the Splash-2 benchmark suite.
+We include an FFT example derived from the Splash-2 benchmark suite for a statically compiled benchmark.
 First build Sigil using the instructions above in "Building Sigil" and navigate back to the main Sigil folder. 
 Then follow the instructions below:
 
