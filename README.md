@@ -32,11 +32,12 @@ $ ./make check
 Prior to generating traces through executing Sigil on the user program, one 
 must compile the synchronization function intercept wrapper script as a
 shared object. This wrapper script enables detecting and logging Pthread calls
-and OpenMP during trace capture. The source code to this pthread wrapper is 
-tools/wrapper_openmp.c and must first be compiled then dynmically preloaded 
-during the trace generation of the user program. Compiling the wrapper for 
-capturing OpenMP function calls requires the source gcc library associated 
-with the locally used gcc binary.
+and OpenMP during trace capture. Currently this wrapper is written to support
+common OpenMP 4.0 functions (along with Pthread calls) with gcc 4.9. The source
+code to this pthread wrapper is tools/wrapper_openmp.c and must first be
+compiled then dynmically preloaded during the trace generation of the user
+program. Compiling the wrapper for capturing OpenMP function calls requires 
+the source gcc library associated with the locally used gcc binary.
 
 An example of compiling this wrapper script follows:
 
@@ -82,8 +83,10 @@ provided documentation.
 
 #####Running provided example
 
-We include an FFT example derived from the Splash-2 benchmark suite for a statically compiled benchmark.
-First build Sigil using the instructions above in "Building Sigil" and navigate back to the main Sigil folder. 
+We include an FFT example derived from the Splash-2 benchmark suite for a
+statically compiled benchmark.
+First build Sigil using the instructions above in "Building Sigil" and navigate
+back to the main Sigil folder. 
 Then follow the instructions below:
 
 ```sh
@@ -107,8 +110,11 @@ $ make
 $ ./run_example.sh
 ```
 
-run_example.sh is a bash script that contains the lines mentioned above in the "Running Sigil" section.
-If you modified the Makefile correctly, when the bash script finishes, the folder should contain traces for all the 8 threads (-p8 runs the 8-threaded version of FFT) and the pthread meta-data file.
+run_example.sh is a bash script that contains the lines mentioned above in the
+"Running Sigil" section.
+If you modified the Makefile correctly, when the bash script finishes, the
+folder should contain traces for all the 8 threads (-p8 runs the 8-threaded
+version of FFT) and the pthread meta-data file.
 This folder can simply be specified for the Replay portion of SynchroTrace.
 
 #####Restrictions
