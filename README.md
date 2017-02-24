@@ -1,4 +1,4 @@
-#**Deprecated soon -- being replaced by [SIGIL2](https://github.com/mdlui/Sigil2)**
+#**Deprecated -- USE [SIGIL2](https://github.com/mdlui/Sigil2)**
 
 #What is Sigil?
 
