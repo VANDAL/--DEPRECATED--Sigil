@@ -1,8 +1,8 @@
-#**Deprecated -- USE [SIGIL2](https://github.com/mdlui/Sigil2)**
+# **Deprecated -- USE [Prism](https://github.com/vandal/prism)**
 
-#What is Sigil?
+# What is Sigil?
 
-#####Overview
+##### Overview
 
 Sigil is a Valgrind tool designed to help the HW/SW partitioning problem.
 
@@ -10,7 +10,7 @@ This is a modified version of Sigil for use in the [SynchroTrace] framework.
 For information on the previous version of Sigil, please see: 
 https://github.com/snilakan/Sigil
 
-#####Building Sigil
+##### Building Sigil
 
 We offer a setup script to automatically detect missing package
 dependencies and build the tool. 
@@ -29,7 +29,7 @@ $ ./configure
 $ ./make check
 ```
 
-#####Compiling User Programs
+##### Compiling User Programs
 
 Prior to generating traces through executing Sigil on the user program, one 
 must compile the synchronization function intercept wrapper script as a
@@ -57,7 +57,7 @@ $cd <SIGIL_PATH>/tools
 $gcc -Wall -g -DVGO_linux=1 -fPIC <SIGIL_PATH>/tools/wrapper_openmp.c -I ../valgrind-3.10.1/include/ -I ../valgrind-3.10.1/ -I ../valgrind-3.10.1/callgrind -I gcc-4.9.2/libgomp/ -I gcc-4.9.2/libgcc/ -I gcc-4.9.2/libgomp/config/linux/ -shared -o wrapper.so
 ```
 
-#####Running Sigil
+##### Running Sigil
 
 An included script will run Sigil with the most common options. Note that
 the user must first edit this script with some default paths to let it know
@@ -83,7 +83,7 @@ $ ./generate_pthread_file.py err.gz
 More information about running the tool and its options can be found in the
 provided documentation.
 
-#####Running provided example
+##### Running provided example
 
 We include an FFT example derived from the Splash-2 benchmark suite for a
 statically compiled benchmark.
@@ -119,7 +119,7 @@ folder should contain traces for all the 8 threads (-p8 runs the 8-threaded
 version of FFT) and the pthread meta-data file.
 This folder can simply be specified for the Replay portion of SynchroTrace.
 
-#####Restrictions
+##### Restrictions
 
 Sigil is a Valgrind tool, and as such, is 
 only officially supported in LINUX.
